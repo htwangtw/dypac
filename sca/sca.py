@@ -37,7 +37,7 @@ def _replicate_cluster(y, subsample_size, n_clusters, n_replications=40,
                        contiguous=False, max_iter=30):
     """ Replicate a clustering on random subsamples
     """
-    onehot = np.zeros([n_replications, n_clusters, y.shape[1]])
+    onehot = np.zeros([n_replications, n_clusters, y.shape[0]])
     for rr in range(0, n_replications):
         samp = _select_subsample(y, subsample_size, contiguous)
         cent, part, inert = k_means(samp, n_clusters=n_clusters, init="random",
@@ -52,10 +52,11 @@ def recursive_cluster(y, subsample_size, n_clusters, n_states,
     """
     onehot = _replicate_cluster(y, subsample_size, n_clusters, n_replications,
                                 contiguous, max_iter)
-    onehot = np.reshape(onehot, [n_replications * n_clusters, y.shape[1]])
+    onehot = np.reshape(onehot, [n_replications * n_clusters, y.shape[0]])
     cent, part, inert = k_means(onehot, n_clusters=n_states, init="random",
                                 max_iter=max_iter)
-    stab_maps = np.zeros([y.shape[1], n_states])
+    stab_maps = np.zeros([y.shape[0], n_states])
     for ss in range(0, n_states):
         if np.any(part == ss):
             stab_maps[:, ss] = np.mean(onehot[part == ss, :], axis=0)
+    return stab_maps
