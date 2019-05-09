@@ -34,29 +34,34 @@ def _select_subsample(y, subsample_size, contiguous=False):
 
 
 def _replicate_cluster(y, subsample_size, n_clusters, n_replications=40,
-                       contiguous=False, max_iter=30):
+                       contiguous=False, max_iter=30, n_init=10, n_jobs=1):
     """ Replicate a clustering on random subsamples
     """
     onehot = np.zeros([n_replications, n_clusters, y.shape[0]])
     for rr in range(0, n_replications):
         samp = _select_subsample(y, subsample_size, contiguous)
-        cent, part, inert = k_means(samp, n_clusters=n_clusters, init="random",
-                                    max_iter=max_iter)
+        cent, part, inert = k_means(samp, n_clusters=n_clusters,
+                                    init="k-means++", max_iter=max_iter,
+                                    n_init=n_init, n_jobs=n_jobs)
         onehot[rr, :, :] = _part2onehot(part, n_clusters)
     return onehot
 
 
 def recursive_cluster(y, subsample_size, n_clusters, n_states,
-                      n_replications=40, contiguous=False, max_iter=30):
+                      n_replications=40, contiguous=False, max_iter=30,
+                      n_init=10, n_jobs=1):
     """ Recursive k-means clustering of clusters based on random subsamples
     """
     onehot = _replicate_cluster(y, subsample_size, n_clusters, n_replications,
                                 contiguous, max_iter)
     onehot = np.reshape(onehot, [n_replications * n_clusters, y.shape[0]])
-    cent, part, inert = k_means(onehot, n_clusters=n_states, init="random",
-                                max_iter=max_iter)
+    cent, part, inert = k_means(onehot, n_clusters=n_states, init="k-means++",
+                                max_iter=max_iter, n_init=n_init,
+                                n_jobs=n_jobs)
     stab_maps = np.zeros([y.shape[0], n_states])
+    dwell_time = np.zeros([n_states, 1])
     for ss in range(0, n_states):
+        dwell_time[ss] = np.sum(part==ss) / n_replications
         if np.any(part == ss):
             stab_maps[:, ss] = np.mean(onehot[part == ss, :], axis=0)
-    return stab_maps
+    return stab_maps, dwell_time
