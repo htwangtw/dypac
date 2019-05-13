@@ -5,6 +5,24 @@ import numpy as np
 from sklearn.cluster import k_means
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 
+class CommunityState():
+
+    def __init__(self, subsample_size=30, n_clusters=10,  n_states=3,
+                 n_replications=40, contiguous=False, max_iter=30,
+                 threshold_dice=0.3, threshold_stability=0.5, n_init=10,
+                 n_jobs=1, n_init_aggregation=100):
+        self.subsample_size = subsample_size
+        self.n_clusters = n_clusters
+        self.n_states = n_states
+        self.n_replications = n_replications
+        self.contiguous = contiguous
+        self.max_iter = max_iter
+        self.threshold_dice = threshold_dice
+        self.threshold_stability = threshold_stability
+        self.n_init = n_init
+        self.n_jobs = n_jobs
+        self.n_init_aggregation = n_init_aggregation
+
 def _part2onehot(part, n_clusters=0):
     """ Convert a partition with integer clusters into a series of one-hot
         encoding vectors.
@@ -37,7 +55,7 @@ def _replicate_cluster(y, subsample_size, n_clusters, n_replications=40,
                        contiguous=False, max_iter=30, n_init=10, n_jobs=1):
     """ Replicate a clustering on random subsamples
     """
-    onehot = np.zeros([n_replications, n_clusters, y.shape[0]])
+    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype='bool')
     for rr in range(0, n_replications):
         samp = _select_subsample(y, subsample_size, contiguous)
         cent, part, inert = k_means(samp, n_clusters=n_clusters,
