@@ -30,7 +30,7 @@ def _part2onehot(part, n_clusters=0):
     if n_clusters == 0:
         n_clusters = np.max(part)+1
 
-    onehot = np.zeros([n_clusters, part.shape[0]])
+    onehot = np.zeros([n_clusters, part.shape[0]], dtype='int')
     for cc in range(0, n_clusters):
         onehot[cc, :] = part == cc
     return onehot
@@ -55,7 +55,7 @@ def _replicate_cluster(y, subsample_size, n_clusters, n_replications=40,
                        contiguous=False, max_iter=30, n_init=10, n_jobs=1):
     """ Replicate a clustering on random subsamples
     """
-    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype='bool')
+    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype='int')
     for rr in range(0, n_replications):
         samp = _select_subsample(y, subsample_size, contiguous)
         cent, part, inert = k_means(samp, n_clusters=n_clusters,
@@ -102,7 +102,6 @@ def recursive_cluster(y, subsample_size, n_clusters,  n_states,
     part = _kmeans_aggregation(onehot, n_init_aggregation,
                                n_states * n_clusters, n_jobs, max_iter,
                                threshold_stability, threshold_dice)
-    print(part)
     stab_maps, dwell_time = _stab_maps(onehot, part, n_replications,
                                        n_states * n_clusters)
     return stab_maps, dwell_time
@@ -115,7 +114,8 @@ def _kmeans_aggregation(onehot, n_init, n_clusters, n_jobs, max_iter,
                                 n_init=n_init, n_jobs=n_jobs)
     for ss in range(n_clusters):
         if np.any(part == ss):
-            ref_cluster = np.mean(onehot[part == ss, :], axis=0)
+            ref_cluster = np.mean(onehot[part == ss, :].astype('float'),
+                                  axis=0)
             ref_cluster = ref_cluster > threshold_stability
             dice = _dice_vec(ref_cluster, onehot[part==ss,:])
             tmp = part[part==ss]
@@ -131,21 +131,4 @@ def _stab_maps(onehot, part, n_replications, n_clusters):
         dwell_time[ss] = np.sum(part==ss) / n_replications
         if np.any(part == ss):
             stab_maps[:, ss] = np.mean(onehot[part == ss, :], axis=0)
-    return stab_maps, dwell_time
-
-
-def _hierarchical_aggregation(onehot):
-    dmtx = _dice_matrix(onehot)
-    iu = np.triu_indices(dmtx.shape[0], 1)
-    dist_part = 1 - dmtx[iu]
-    hier_clustering = linkage(dist_part, method="average",
-                              optimal_ordering=True)
-    states = fcluster(hier_clustering, 1-threshold_dice, criterion='distance')
-    n_clusters = np.max(states)
-    stab_maps = np.zeros([y.shape[0], n_states])
-    dwell_time = np.zeros([n_states, 1])
-    for ss in range(0, n_states):
-        dwell_time[ss] = np.sum(states==ss) / n_replications
-        if np.any(states == ss):
-            stab_maps[:, ss] = np.mean(onehot[states == ss, :], axis=0)
     return stab_maps, dwell_time
