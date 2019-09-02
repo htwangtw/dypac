@@ -1,11 +1,11 @@
 from setuptools import setup
 
 setup(
-   name='sca',
-   version='0.1',
-   description='stable cluster aggregation',
+   name='sdynca',
+   version='0.2',
+   description='stable dynamic cluster aggregation',
    author='Pierre Bellec',
-   author_email='pierre.bellec@gmail.com',
    packages=['.'],  #same as name
-   install_requires=['numpy', 'sklearn'], #external packages as dependencies
+   author_email='pierre.bellec@gmail.com',
+   install_requires=['numpy', 'nilearn', 'sklearn'], #external packages as dependencies
 )
