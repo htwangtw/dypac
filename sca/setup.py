@@ -1,9 +1,9 @@
 from setuptools import setup
 
 setup(
-   name='sdynca',
-   version='0.2',
-   description='stable dynamic cluster aggregation',
+   name='dypac',
+   version='0.3',
+   description='dynamic parcel aggregation with clustering',
    author='Pierre Bellec',
    packages=['.'],  #same as name
    author_email='pierre.bellec@gmail.com',

@@ -1,5 +1,5 @@
 """
-Recursive clustering of clusters based on subsamples
+Dynamic Parcel Aggregation with Clustering (dypac)
 """
-from .sdynca import SDynCA
-__all__ = ['SDynCA']
+from .dypac import dypac
+__all__ = ['dypac']
