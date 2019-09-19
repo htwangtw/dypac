@@ -136,7 +136,7 @@ def _aggregate_clusters(
     return stab_maps, dwell_time
 
 
-    class dypac(BaseDecomposition):
+class dypac(BaseDecomposition):
     """Perform Stable Dynamic Cluster Analysis.
 
     Parameters
@@ -364,9 +364,10 @@ def _aggregate_clusters(
         # mask_and_reduce step
         if self.verbose:
             print("[{0}] Loading data".format(self.__class__.__name__))
-        stab_maps = self._mask_and_reduce(imgs, confounds)
+        stab_maps, dwell_time = self._mask_and_reduce(imgs, confounds)
 
         self.components_ = stab_maps.transpose()
+        self.dwell_time_ = dwell_time
         return self
         # Combine dynamic parcels across all datasets
         # self._raw_fit(stab_maps)
@@ -392,7 +393,6 @@ def _aggregate_clusters(
             delayed(self._mask_and_cluster_single)(img=img, confound=confound)
             for img, confound in zip(imgs, confounds)
         )
-        subject_n_samples = [subject_data.shape[0] for subject_data in data_list]
         n_voxels = int(np.sum(_safe_get_data(self.masker_.mask_img_)))
 
         stab_maps = data_list[0][0]
@@ -403,7 +403,7 @@ def _aggregate_clusters(
             # Clear memory as fast as possible: remove the reference on
             # the corresponding block of data
             data_list[i] = None
-        return stab_maps
+        return stab_maps, dwell_time
 
     def _mask_and_cluster_single(self, img, confound):
         """Utility function for multiprocessing from _mask_and_reduce"""
