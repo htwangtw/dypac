@@ -2,7 +2,7 @@
 Dynamic Parcel Aggregation with Clustering (dypac)
 """
 
-# Author: Pierre Bellec
+# Authors: Pierre Bellec, Amal Boukhdir
 # License: BSD 3 clause
 import glob
 import itertools
@@ -100,39 +100,6 @@ def _stab_maps(onehot, states, n_replications, n_clusters):
             stab_maps[:, ss] = np.mean(onehot[states == ss, :], axis=0)
     #stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
     #dwell_time = dwell_time[dwell_time>(1/n_replications)]
-    return stab_maps, dwell_time
-
-
-def _aggregate_clusters(
-    y,
-    subsample_size,
-    n_clusters,
-    n_states,
-    n_replications=40,
-    max_iter=30,
-    threshold_sim=0.3,
-    n_init=10,
-    n_jobs=1,
-    n_init_aggregation=100,
-):
-    """ Combine cluster replication, aggregation, state identification
-        and generation of stability maps
-    """
-    onehot = _replicate_clusters(
-        y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs
-    )
-    onehot = np.reshape(onehot, [n_replications * n_clusters, y.shape[0]])
-    states = _find_states(
-        onehot,
-        n_init_aggregation,
-        n_states * n_clusters,
-        n_jobs,
-        max_iter,
-        threshold_sim,
-    )
-    stab_maps, dwell_time = _stab_maps(
-        onehot, states, n_replications, n_states * n_clusters
-    )
     return stab_maps, dwell_time
 
 
@@ -364,15 +331,27 @@ class dypac(BaseDecomposition):
         # mask_and_reduce step
         if self.verbose:
             print("[{0}] Loading data".format(self.__class__.__name__))
-        stab_maps, dwell_time = self._mask_and_reduce(imgs, confounds)
+        onehot = self._mask_and_reduce(imgs, confounds)
 
+        # find the states
+        states = _find_states(
+            onehot,
+            self.n_init_aggregation,
+            self.n_states * self.n_clusters,
+            self.n_jobs,
+            self.max_iter,
+            self.threshold_sim
+        )
+
+        # Generate the stability maps
+        stab_maps, dwell_time = _stab_maps(
+            onehot, states, self.n_replications, self.n_states * self.n_clusters
+        )
+
+        # Return components
         self.components_ = stab_maps.transpose()
         self.dwell_time_ = dwell_time
         return self
-        # Combine dynamic parcels across all datasets
-        # self._raw_fit(stab_maps)
-
-        # return self
 
     def _mask_and_reduce(self, imgs, confounds=None):
         """Uses cluster aggregation over sliding windows to estimate
@@ -395,15 +374,17 @@ class dypac(BaseDecomposition):
         )
         n_voxels = int(np.sum(_safe_get_data(self.masker_.mask_img_)))
 
-        stab_maps = data_list[0][0]
+        onehot = data_list[0]
         dwell_time = data_list[0][1]
         for i in range(1, len(data_list)):
-            stab_maps = np.concat(stab_maps, data_list[i][0], axis=0)
-            dwell_time = np.concat(dwell_time, data_list[i][1], axis=0)
+            onehot = np.concat(onehot, data_list[i], axis=0)
             # Clear memory as fast as possible: remove the reference on
             # the corresponding block of data
             data_list[i] = None
-        return stab_maps, dwell_time
+        onehot = np.reshape(onehot,
+                            [self.n_replications * self.n_clusters, len(data_list)]
+                            )
+        return onehot
 
     def _mask_and_cluster_single(self, img, confound):
         """Utility function for multiprocessing from _mask_and_reduce"""
@@ -413,21 +394,12 @@ class dypac(BaseDecomposition):
         # data
         del img
         random_state = check_random_state(self.random_state)
-        stab_maps, dwell_time = _aggregate_clusters(
+        onehot = _replicate_clusters(
             this_data.transpose(),
             subsample_size=self.subsample_size,
             n_clusters=self.n_clusters,
-            n_states=self.n_states,
-            n_replications=self.n_replications,
             max_iter=self.max_iter,
-            threshold_sim=self.threshold_sim,
             n_init=self.n_init,
-            n_jobs=self.n_jobs,
-            n_init_aggregation=self.n_init_aggregation,
+            n_jobs=self.n_jobs
         )
-        return (stab_maps, dwell_time)
-
-    def _raw_fit(self, data):
-        """Helper function that directly process unmasked data"""
-        self.components_ = data
-        return self.components_
+        return onehot
