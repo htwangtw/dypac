@@ -13,6 +13,8 @@ import numpy as np
 from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
 
+from kmodes.kmodes import KModes
+
 from nilearn import EXPAND_PATH_WILDCARDS
 from nilearn._utils.compat import Memory, Parallel, delayed, _basestring
 from nilearn._utils.niimg import _safe_get_data
@@ -41,7 +43,7 @@ def _part2onehot(part, n_clusters=0):
     if n_clusters == 0:
         n_clusters = np.max(part) + 1
 
-    onehot = np.zeros([n_clusters, part.shape[0]], dtype="int")
+    onehot = np.zeros([n_clusters, part.shape[0]], dtype="bool")
     for cc in range(0, n_clusters):
         onehot[cc, :] = part == cc
     return onehot
@@ -52,7 +54,7 @@ def _replicate_clusters(
 ):
     """ Replicate a clustering on random subsamples
     """
-    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype="int")
+    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype="bool")
     for rr in range(0, n_replications):
         samp = _select_subsample(y, subsample_size)
         cent, part, inert = k_means(
@@ -71,14 +73,12 @@ def _find_states(
     onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim
 ):
     """Find dynamic states based on the similarity of clusters over time"""
-    cent, states, inert = k_means(
-        onehot,
-        n_clusters=n_clusters,
-        init="k-means++",
-        max_iter=max_iter,
+    kclust = KModes(n_clusters=n_clusters,
+        init="Huang",
         n_init=n_init,
         n_jobs=n_jobs,
-    )
+        verbose=1)
+    states = kclust.fit_predict(onehot)
     for ss in range(n_clusters):
         if np.any(states == ss):
             ref_cluster = np.mean(onehot[states == ss, :].astype("float"), axis=0)
