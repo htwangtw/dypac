@@ -85,7 +85,7 @@ def _find_states(
             parcels = onehot[states == ss, :]
             ref_corr = np.array([pearsonr(ref_cluster, parcels[ii,:])[0] for ii in range(parcels.shape[0])])
             tmp = states[states == ss]
-            tmp[ref_corr < threshold_sim] = -1
+            tmp[ref_corr < threshold_sim] = n_clusters
             states[states == ss] = tmp
     return states
 
