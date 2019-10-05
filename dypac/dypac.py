@@ -13,6 +13,8 @@ import numpy as np
 from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
 
+from kmodes.kmodes import KModes
+
 from nilearn import EXPAND_PATH_WILDCARDS
 from nilearn._utils.compat import Memory, Parallel, delayed, _basestring
 from nilearn._utils.niimg import _safe_get_data
@@ -41,7 +43,7 @@ def _part2onehot(part, n_clusters=0):
     if n_clusters == 0:
         n_clusters = np.max(part) + 1
 
-    onehot = np.zeros([n_clusters, part.shape[0]], dtype="int")
+    onehot = np.zeros([n_clusters, part.shape[0]], dtype="bool")
     for cc in range(0, n_clusters):
         onehot[cc, :] = part == cc
     return onehot
@@ -52,7 +54,7 @@ def _replicate_clusters(
 ):
     """ Replicate a clustering on random subsamples
     """
-    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype="int")
+    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype="bool")
     for rr in range(0, n_replications):
         samp = _select_subsample(y, subsample_size)
         cent, part, inert = k_means(
@@ -64,6 +66,7 @@ def _replicate_clusters(
             n_jobs=n_jobs,
         )
         onehot[rr, :, :] = _part2onehot(part, n_clusters)
+    onehot = onehot.reshape(n_replications * n_clusters, y.shape[0])
     return onehot
 
 
@@ -79,13 +82,14 @@ def _find_states(
         n_init=n_init,
         n_jobs=n_jobs,
     )
+
     for ss in range(n_clusters):
         if np.any(states == ss):
             ref_cluster = np.mean(onehot[states == ss, :].astype("float"), axis=0)
             parcels = onehot[states == ss, :]
             ref_corr = np.array([pearsonr(ref_cluster, parcels[ii,:])[0] for ii in range(parcels.shape[0])])
             tmp = states[states == ss]
-            tmp[ref_corr < threshold_sim] = -1
+            tmp[ref_corr < threshold_sim] = n_clusters
             states[states == ss] = tmp
     return states
 
@@ -334,6 +338,8 @@ class dypac(BaseDecomposition):
         onehot = self._mask_and_reduce(imgs, confounds)
 
         # find the states
+        if self.verbose:
+            print("[{0}] Finding parcellation states".format(self.__class__.__name__))
         states = _find_states(
             onehot,
             self.n_init_aggregation,
@@ -344,6 +350,8 @@ class dypac(BaseDecomposition):
         )
 
         # Generate the stability maps
+        if self.verbose:
+            print("[{0}] Generating state stability maps".format(self.__class__.__name__))
         stab_maps, dwell_time = _stab_maps(
             onehot, states, self.n_replications, self.n_states * self.n_clusters
         )
@@ -373,7 +381,6 @@ class dypac(BaseDecomposition):
             for img, confound in zip(imgs, confounds)
         )
         n_voxels = int(np.sum(_safe_get_data(self.masker_.mask_img_)))
-
         onehot = data_list[0]
         dwell_time = data_list[0][1]
         for i in range(1, len(data_list)):
@@ -381,9 +388,6 @@ class dypac(BaseDecomposition):
             # Clear memory as fast as possible: remove the reference on
             # the corresponding block of data
             data_list[i] = None
-        onehot = np.reshape(onehot,
-                            [self.n_replications * self.n_clusters, len(data_list)]
-                            )
         return onehot
 
     def _mask_and_cluster_single(self, img, confound):
