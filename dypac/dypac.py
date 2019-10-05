@@ -66,6 +66,7 @@ def _replicate_clusters(
             n_jobs=n_jobs,
         )
         onehot[rr, :, :] = _part2onehot(part, n_clusters)
+    onehot = onehot.reshape(n_replications * n_clusters, y.shape[0])
     return onehot
 
 
@@ -73,12 +74,15 @@ def _find_states(
     onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim
 ):
     """Find dynamic states based on the similarity of clusters over time"""
-    kclust = KModes(n_clusters=n_clusters,
-        init="Huang",
+    cent, states, inert = k_means(
+        onehot,
+        n_clusters=n_clusters,
+        init="k-means++",
+        max_iter=max_iter,
         n_init=n_init,
         n_jobs=n_jobs,
-        verbose=1)
-    states = kclust.fit_predict(onehot)
+    )
+
     for ss in range(n_clusters):
         if np.any(states == ss):
             ref_cluster = np.mean(onehot[states == ss, :].astype("float"), axis=0)
@@ -334,6 +338,8 @@ class dypac(BaseDecomposition):
         onehot = self._mask_and_reduce(imgs, confounds)
 
         # find the states
+        if self.verbose:
+            print("[{0}] Finding parcellation states".format(self.__class__.__name__))
         states = _find_states(
             onehot,
             self.n_init_aggregation,
@@ -344,6 +350,8 @@ class dypac(BaseDecomposition):
         )
 
         # Generate the stability maps
+        if self.verbose:
+            print("[{0}] Generating state stability maps".format(self.__class__.__name__))
         stab_maps, dwell_time = _stab_maps(
             onehot, states, self.n_replications, self.n_states * self.n_clusters
         )
@@ -373,7 +381,6 @@ class dypac(BaseDecomposition):
             for img, confound in zip(imgs, confounds)
         )
         n_voxels = int(np.sum(_safe_get_data(self.masker_.mask_img_)))
-
         onehot = data_list[0]
         dwell_time = data_list[0][1]
         for i in range(1, len(data_list)):
@@ -381,9 +388,6 @@ class dypac(BaseDecomposition):
             # Clear memory as fast as possible: remove the reference on
             # the corresponding block of data
             data_list[i] = None
-        onehot = np.reshape(onehot,
-                            [self.n_replications * self.n_clusters, len(data_list)]
-                            )
         return onehot
 
     def _mask_and_cluster_single(self, img, confound):
