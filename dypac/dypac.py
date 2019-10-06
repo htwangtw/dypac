@@ -64,8 +64,8 @@ def _start_window(n_time, n_replications, subsample_size):
 
 
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications=40, max_iter=30, n_init=10,
-    n_jobs=1, verbose=1
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init,
+    n_jobs, verbose
 ):
     """ Replicate a clustering on random subsamples
     """
