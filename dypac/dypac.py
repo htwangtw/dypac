@@ -24,13 +24,16 @@ from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 
 
-def _select_subsample(y, subsample_size):
+def _select_subsample(y, subsample_size, start=None):
     """ Select a random subsample in a data array
     """
     n_samples = y.shape[1]
     subsample_size = np.min([subsample_size, n_samples])
     max_start = n_samples - subsample_size
-    start = np.floor((max_start + 1) * np.random.rand(1))
+    if start is not None:
+        start = np.min([start, max_start])
+    else:
+        start = np.floor((max_start + 1) * np.random.rand(1))
     stop = start + subsample_size
     samp = y[:, np.arange(int(start), int(stop))]
     return samp
@@ -49,14 +52,26 @@ def _part2onehot(part, n_clusters=0):
     return onehot
 
 
+def _start_window(n_time, n_replications, subsample_size):
+    """ Get a list of the starting points of sliding windows.
+    """
+    max_replications = n_time - subsample_size + 1
+    n_replications = np.min([max_replications, n_replications])
+    list_start = np.linspace(0, max_replications, n_replications)
+    list_start = np.floor(list_start)
+    list_start = np.unique(list_start)
+    return list_start
+
+
 def _replicate_clusters(
     y, subsample_size, n_clusters, n_replications=40, max_iter=30, n_init=10, n_jobs=1
 ):
     """ Replicate a clustering on random subsamples
     """
     onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype="bool")
+    list_start = _start_window(y.shape[1], n_replications, subsample_size)
     for rr in range(0, n_replications):
-        samp = _select_subsample(y, subsample_size)
+        samp = _select_subsample(y, subsample_size, list_start[rr])
         cent, part, inert = k_means(
             samp,
             n_clusters=n_clusters,
