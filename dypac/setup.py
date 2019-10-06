@@ -7,5 +7,5 @@ setup(
    author='Pierre Bellec',
    packages=['.'],  #same as name
    author_email='pierre.bellec@gmail.com',
-   install_requires=['numpy', 'nilearn', 'sklearn'], #external packages as dependencies
+   install_requires=['numpy', 'nilearn', 'sklearn', 'tqdm'], #external packages as dependencies
 )

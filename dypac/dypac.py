@@ -7,13 +7,13 @@ Dynamic Parcel Aggregation with Clustering (dypac)
 import glob
 import itertools
 
+from tqdm import tqdm
+
 from scipy.stats import pearsonr
 import numpy as np
 
 from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
-
-from kmodes.kmodes import KModes
 
 from nilearn import EXPAND_PATH_WILDCARDS
 from nilearn._utils.compat import Memory, Parallel, delayed, _basestring
@@ -64,13 +64,18 @@ def _start_window(n_time, n_replications, subsample_size):
 
 
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications=40, max_iter=30, n_init=10, n_jobs=1
+    y, subsample_size, n_clusters, n_replications=40, max_iter=30, n_init=10,
+    n_jobs=1, verbose=1
 ):
     """ Replicate a clustering on random subsamples
     """
     onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype="bool")
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
-    for rr in range(0, n_replications):
+    range_replication = range(0, n_replications)
+    if verbose:
+        range_replication = tqdm(range_replication)
+
+    for rr in range_replication:
         samp = _select_subsample(y, subsample_size, list_start[rr])
         cent, part, inert = k_means(
             samp,
@@ -413,12 +418,16 @@ class dypac(BaseDecomposition):
         # data
         del img
         random_state = check_random_state(self.random_state)
+        if self.verbose:
+            print("[{0}] Replicating clustering".format(self.__class__.__name__))
         onehot = _replicate_clusters(
             this_data.transpose(),
             subsample_size=self.subsample_size,
             n_clusters=self.n_clusters,
+            n_replications=self.n_replications,
             max_iter=self.max_iter,
             n_init=self.n_init,
-            n_jobs=self.n_jobs
+            n_jobs=self.n_jobs,
+            verbose=self.verbose
         )
         return onehot
