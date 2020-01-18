@@ -7,8 +7,10 @@ Dynamic Parcel Aggregation with Clustering (dypac)
 import glob
 import itertools
 
-from tqdm import tqdm
+import load_confounds
 
+from tqdm import tqdm
+    
 from scipy.stats import pearsonr
 import numpy as np
 
@@ -397,7 +399,9 @@ class dypac(BaseDecomposition):
         if not hasattr(imgs, "__iter__"):
             imgs = [imgs]
 
-        if confounds is None:
+        if confounds is not None:
+            counfounds = load_confounds.load_confounds(confounds)
+        else:
             confounds = itertools.repeat(confounds)
 
         data_list = Parallel(n_jobs=self.n_jobs)(
