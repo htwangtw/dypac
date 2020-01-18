@@ -64,8 +64,7 @@ def _start_window(n_time, n_replications, subsample_size):
 
 
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init,
-    n_jobs, verbose
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose
 ):
     """ Replicate a clustering on random subsamples
     """
@@ -90,9 +89,7 @@ def _replicate_clusters(
     return onehot
 
 
-def _find_states(
-    onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim
-):
+def _find_states(onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim):
     """Find dynamic states based on the similarity of clusters over time"""
     cent, states, inert = k_means(
         onehot,
@@ -107,7 +104,12 @@ def _find_states(
         if np.any(states == ss):
             ref_cluster = np.mean(onehot[states == ss, :].astype("float"), axis=0)
             parcels = onehot[states == ss, :]
-            ref_corr = np.array([pearsonr(ref_cluster, parcels[ii,:])[0] for ii in range(parcels.shape[0])])
+            ref_corr = np.array(
+                [
+                    pearsonr(ref_cluster, parcels[ii, :])[0]
+                    for ii in range(parcels.shape[0])
+                ]
+            )
             tmp = states[states == ss]
             tmp[ref_corr < threshold_sim] = n_clusters
             states[states == ss] = tmp
@@ -122,8 +124,8 @@ def _stab_maps(onehot, states, n_replications, n_clusters):
         dwell_time[ss] = np.sum(states == ss) / n_replications
         if np.any(states == ss):
             stab_maps[:, ss] = np.mean(onehot[states == ss, :], axis=0)
-    #stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
-    #dwell_time = dwell_time[dwell_time>(1/n_replications)]
+    # stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
+    # dwell_time = dwell_time[dwell_time>(1/n_replications)]
     return stab_maps, dwell_time
 
 
@@ -366,12 +368,14 @@ class dypac(BaseDecomposition):
             self.n_states * self.n_clusters,
             self.n_jobs,
             self.max_iter,
-            self.threshold_sim
+            self.threshold_sim,
         )
 
         # Generate the stability maps
         if self.verbose:
-            print("[{0}] Generating state stability maps".format(self.__class__.__name__))
+            print(
+                "[{0}] Generating state stability maps".format(self.__class__.__name__)
+            )
         stab_maps, dwell_time = _stab_maps(
             onehot, states, self.n_replications, self.n_states * self.n_clusters
         )
@@ -428,6 +432,6 @@ class dypac(BaseDecomposition):
             max_iter=self.max_iter,
             n_init=self.n_init,
             n_jobs=self.n_jobs,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
         return onehot
