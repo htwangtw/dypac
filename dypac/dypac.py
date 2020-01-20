@@ -106,28 +106,34 @@ def _find_states(onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim):
 
     for ss in range(n_clusters):
         if np.any(states == ss):
-            ref_cluster = np.mean(onehot[states == ss, :].astype("float"), axis=0)
             parcels = onehot[states == ss, :]
-            ref_corr = np.array(
-                [
-                    pearsonr(ref_cluster, parcels[ii, :])[0]
-                    for ii in range(parcels.shape[0])
-                ]
-            )
+            n_parcels = np.sum(states == ss)
+            ref_cluster = csr_matrix(parcels.mean(dtype="float", axis=0))
+            ref_sim = np.zeros(n_parcels)
+            for pp in range(n_parcels):
+                ref_sim[pp] = ref_cluster[parcels[pp,:]].mean(dtype="float")
             tmp = states[states == ss]
-            tmp[ref_corr < threshold_sim] = n_clusters
+            tmp[ref_sim < threshold_sim] = n_clusters
             states[states == ss] = tmp
     return states
 
 
-def _stab_maps(onehot, states, n_replications, n_clusters):
+def _stab_maps(onehot, states, n_replications, n_states, threshold_stab):
     """Generate stability maps associated with different states"""
-    stab_maps = np.zeros([onehot.shape[1], n_clusters])
-    dwell_time = np.zeros([n_clusters, 1])
-    for ss in range(0, n_clusters):
+    dwell_time = np.zeros([n_states, 1])
+    val = np.array([])
+    col_ind = np.array([])
+    row_ind = np.array([])
+
+    for ss in range(0, n_states):
         dwell_time[ss] = np.sum(states == ss) / n_replications
         if np.any(states == ss):
-            stab_maps[:, ss] = np.mean(onehot[states == ss, :], axis=0)
+            stab_map = onehot[states == ss, :].mean(dtype='float', axis=0)
+            mask = stab_map > threshold_stab
+            col_ind = np.append(col_ind, np.repeat(ss, np.sum(mask)))
+            row_ind = np.append(row_ind, np.nonzero(mask)[1])
+            val = np.append(val, stab_map[mask])
+    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[onehot.shape[1], n_states])
     # stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
     # dwell_time = dwell_time[dwell_time>(1/n_replications)]
     return stab_maps, dwell_time
@@ -158,6 +164,9 @@ class dypac(BaseDecomposition):
 
     threshold_sim: float (0 <= . <= 1)
         Minimal acceptable average dice in a state
+
+    threshold_stab: float (0 <= . <= 1), optional
+        Minimal stability in the stability maps
 
     random_state: int or RandomState
         Pseudo number generator state used for random sampling.
@@ -251,7 +260,7 @@ class dypac(BaseDecomposition):
         n_replications=40,
         max_iter=30,
         threshold_sim=0.3,
-        threshold_stability=0.5,
+        threshold_stab=0.1,
         random_state=None,
         mask=None,
         smoothing_fwhm=None,
@@ -298,6 +307,7 @@ class dypac(BaseDecomposition):
         self.n_replications = n_replications
         self.max_iter = max_iter
         self.threshold_sim = threshold_sim
+        self.threshold_stab = threshold_stab
 
     def _check_components_(self):
         if not hasattr(self, "components_"):
@@ -381,7 +391,7 @@ class dypac(BaseDecomposition):
                 "[{0}] Generating state stability maps".format(self.__class__.__name__)
             )
         stab_maps, dwell_time = _stab_maps(
-            onehot, states, self.n_replications, self.n_states * self.n_clusters
+            onehot, states, self.n_replications, self.n_states * self.n_clusters, self.threshold_stab
         )
 
         # Return components
