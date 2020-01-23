@@ -24,6 +24,7 @@ from nilearn._utils.cache_mixin import CacheMixin, cache
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 
+from load_confounds import load_confounds
 
 def _select_subsample(y, subsample_size, start=None):
     """ Select a random subsample in a data array
@@ -118,16 +119,17 @@ def _find_states(onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim):
 
 def _stab_maps(onehot, states, n_replications, n_states):
     """Generate stability maps associated with different states"""
-    
+
     stab_maps = np.zeros([onehot.shape[1], n_states])
-    dwell_time = np.zeros([n_states, 1])
+    dwell_time = np.zeros(n_states)
     for ss in range(0, n_states):
         dwell_time[ss] = np.sum(states == ss) / n_replications
         if np.any(states == ss):
             stab_maps[:, ss] = onehot[states == ss, :].mean(dtype='float', axis=0)
 
-    stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
-    dwell_time = dwell_time[dwell_time>(1/n_replications)]
+    indsort = np.argsort(-dwell_time)
+    stab_maps = stab_maps[:, indsort]
+    dwell_time = dwell_time[indsort]
     return stab_maps, dwell_time
 
 
@@ -228,7 +230,7 @@ class dypac(BaseDecomposition):
         'all CPUs', -2 'all CPUs but one', and so on.
 
     verbose: integer, optional
-        Indicate the level of verbosity. By default, nothing is printed.
+        Indicate the level of verbosity. By default, print progress.
 
     Attributes
     ----------
@@ -264,7 +266,7 @@ class dypac(BaseDecomposition):
         memory=Memory(cachedir=None),
         memory_level=0,
         n_jobs=1,
-        verbose=0,
+        verbose=1,
     ):
         # All those settings are taken from nilearn BaseDecomposition
         self.random_state = random_state
@@ -398,10 +400,10 @@ class dypac(BaseDecomposition):
         if not hasattr(imgs, "__iter__"):
             imgs = [imgs]
 
-        # if confounds is not None:
-        #     counfounds = load_confounds.load_confounds(confounds)
-        # else:
-        #     confounds = itertools.repeat(confounds)
+        if confounds is not None:
+            counfounds = load_confounds(confounds)
+        else:
+            confounds = itertools.repeat(confounds)
 
         data_list = Parallel(n_jobs=self.n_jobs)(
             delayed(self._mask_and_cluster_single)(img=img, confound=confound)
