@@ -400,9 +400,7 @@ class dypac(BaseDecomposition):
         if not hasattr(imgs, "__iter__"):
             imgs = [imgs]
 
-        if confounds is not None:
-            counfounds = load_confounds(confounds)
-        else:
+        if confounds is None:
             confounds = itertools.repeat(confounds)
 
         onehot = csr_matrix([0, ])
