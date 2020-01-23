@@ -10,7 +10,7 @@ import itertools
 from tqdm import tqdm
 
 from scipy.stats import pearsonr
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, vstack
 import numpy as np
 
 from sklearn.cluster import k_means
@@ -92,18 +92,18 @@ def _replicate_clusters(
     return _part2onehot(part, n_clusters)
 
 
-def _find_states(onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim):
+def _find_states(onehot, n_init, n_states, n_jobs, max_iter, threshold_sim):
     """Find dynamic states based on the similarity of clusters over time"""
     cent, states, inert = k_means(
         onehot,
-        n_clusters=n_clusters,
+        n_clusters=n_states,
         init="k-means++",
         max_iter=max_iter,
         n_init=n_init,
         n_jobs=n_jobs,
     )
 
-    for ss in range(n_clusters):
+    for ss in range(n_states):
         if np.any(states == ss):
             parcels = onehot[states == ss, :]
             n_parcels = np.sum(states == ss)
@@ -112,7 +112,7 @@ def _find_states(onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim):
             for pp in range(n_parcels):
                 ref_sim[pp] = ref_cluster[parcels[pp,:]].mean(dtype="float")
             tmp = states[states == ss]
-            tmp[ref_sim < threshold_sim] = n_clusters
+            tmp[ref_sim < threshold_sim] = n_states
             states[states == ss] = tmp
     return states
 
@@ -367,11 +367,11 @@ class dypac(BaseDecomposition):
             print("[{0}] Finding parcellation states".format(self.__class__.__name__))
         states = _find_states(
             onehot,
-            self.n_init_aggregation,
-            self.n_states * self.n_clusters,
-            self.n_jobs,
-            self.max_iter,
-            self.threshold_sim,
+            n_init=self.n_init_aggregation,
+            n_states=self.n_states * self.n_clusters,
+            n_jobs=self.n_jobs,
+            max_iter=self.max_iter,
+            threshold_sim=self.threshold_sim,
         )
 
         # Generate the stability maps
@@ -405,18 +405,15 @@ class dypac(BaseDecomposition):
         else:
             confounds = itertools.repeat(confounds)
 
-        data_list = Parallel(n_jobs=self.n_jobs)(
-            delayed(self._mask_and_cluster_single)(img=img, confound=confound)
-            for img, confound in zip(imgs, confounds)
-        )
-        n_voxels = int(np.sum(_safe_get_data(self.masker_.mask_img_)))
-        onehot = data_list[0]
-        dwell_time = data_list[0][1]
-        for i in range(1, len(data_list)):
-            onehot = np.concat(onehot, data_list[i], axis=0)
-            # Clear memory as fast as possible: remove the reference on
-            # the corresponding block of data
-            data_list[i] = None
+        onehot = csr_matrix([0, ])
+        for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
+            img
+            if self.verbose:
+                print("[{0}] Replicating clusters on {1}".format(self.__class__.__name__, img))
+            if ind > 0:
+                onehot = vstack([onehot, self._mask_and_cluster_single(img=img, confound=confound)])
+            else:
+                onehot = self._mask_and_cluster_single(img=img, confound=confound)
         return onehot
 
     def _mask_and_cluster_single(self, img, confound):
@@ -427,8 +424,6 @@ class dypac(BaseDecomposition):
         # data
         del img
         random_state = check_random_state(self.random_state)
-        if self.verbose:
-            print("[{0}] Replicating clustering".format(self.__class__.__name__))
         onehot = _replicate_clusters(
             this_data.transpose(),
             subsample_size=self.subsample_size,
