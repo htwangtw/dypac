@@ -10,8 +10,9 @@ import itertools
 import load_confounds
 
 from tqdm import tqdm
-    
+
 from scipy.stats import pearsonr
+from scipy.sparse import csr_matrix
 import numpy as np
 
 from sklearn.cluster import k_means
@@ -42,15 +43,18 @@ def _select_subsample(y, subsample_size, start=None):
 
 
 def _part2onehot(part, n_clusters=0):
-    """ Convert a partition with integer clusters into a series of one-hot
-        encoding vectors.
+    """ Convert a series of partition (one per row) with integer clusters into
+        a series of one-hot encoding vectors (one per row and cluster).
     """
     if n_clusters == 0:
         n_clusters = np.max(part) + 1
-
-    onehot = np.zeros([n_clusters, part.shape[0]], dtype="bool")
-    for cc in range(0, n_clusters):
-        onehot[cc, :] = part == cc
+    n_part, n_voxel = part.shape
+    n_el = n_part * n_voxel
+    val = np.repeat(True, n_el)
+    ind_r = np.reshape(part, n_el) + np.repeat(np.array(range(n_part)) * n_clusters, n_voxel)
+    ind_c = np.repeat(np.reshape(range(n_voxel), [1, n_voxel]), n_part, axis=0).flatten()
+    s_onehot = [n_part * n_clusters, n_voxel]
+    onehot = csr_matrix((val, (ind_r, ind_c)), shape=s_onehot, dtype="bool")
     return onehot
 
 
@@ -66,20 +70,19 @@ def _start_window(n_time, n_replications, subsample_size):
 
 
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init,
-    n_jobs, verbose
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose
 ):
     """ Replicate a clustering on random subsamples
     """
-    onehot = np.zeros([n_replications, n_clusters, y.shape[0]], dtype="bool")
+    part = np.zeros([n_replications, y.shape[0]], dtype="int")
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
-    range_replication = range(0, n_replications)
+    range_replication = range(n_replications)
     if verbose:
         range_replication = tqdm(range_replication)
 
     for rr in range_replication:
         samp = _select_subsample(y, subsample_size, list_start[rr])
-        cent, part, inert = k_means(
+        cent, part[rr,:], inert = k_means(
             samp,
             n_clusters=n_clusters,
             init="k-means++",
@@ -87,14 +90,10 @@ def _replicate_clusters(
             n_init=n_init,
             n_jobs=n_jobs,
         )
-        onehot[rr, :, :] = _part2onehot(part, n_clusters)
-    onehot = onehot.reshape(n_replications * n_clusters, y.shape[0])
-    return onehot
+    return _part2onehot(part, n_clusters)
 
 
-def _find_states(
-    onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim
-):
+def _find_states(onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim):
     """Find dynamic states based on the similarity of clusters over time"""
     cent, states, inert = k_means(
         onehot,
@@ -107,25 +106,30 @@ def _find_states(
 
     for ss in range(n_clusters):
         if np.any(states == ss):
-            ref_cluster = np.mean(onehot[states == ss, :].astype("float"), axis=0)
             parcels = onehot[states == ss, :]
-            ref_corr = np.array([pearsonr(ref_cluster, parcels[ii,:])[0] for ii in range(parcels.shape[0])])
+            n_parcels = np.sum(states == ss)
+            ref_cluster = csr_matrix(parcels.mean(dtype="float", axis=0))
+            ref_sim = np.zeros(n_parcels)
+            for pp in range(n_parcels):
+                ref_sim[pp] = ref_cluster[parcels[pp,:]].mean(dtype="float")
             tmp = states[states == ss]
-            tmp[ref_corr < threshold_sim] = n_clusters
+            tmp[ref_sim < threshold_sim] = n_clusters
             states[states == ss] = tmp
     return states
 
 
-def _stab_maps(onehot, states, n_replications, n_clusters):
+def _stab_maps(onehot, states, n_replications, n_states):
     """Generate stability maps associated with different states"""
-    stab_maps = np.zeros([onehot.shape[1], n_clusters])
-    dwell_time = np.zeros([n_clusters, 1])
-    for ss in range(0, n_clusters):
+    stab_maps = np.zeros([onehot.shape[1], n_states])
+    dwell_time = np.zeros([n_states, 1])
+
+    for ss in range(0, n_states):
         dwell_time[ss] = np.sum(states == ss) / n_replications
         if np.any(states == ss):
-            stab_maps[:, ss] = np.mean(onehot[states == ss, :], axis=0)
-    #stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
-    #dwell_time = dwell_time[dwell_time>(1/n_replications)]
+            stab_maps[:, ss] = onehot[states == ss, :].mean(dtype='float', axis=0)
+
+    # stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
+    # dwell_time = dwell_time[dwell_time>(1/n_replications)]
     return stab_maps, dwell_time
 
 
@@ -247,7 +251,6 @@ class dypac(BaseDecomposition):
         n_replications=40,
         max_iter=30,
         threshold_sim=0.3,
-        threshold_stability=0.5,
         random_state=None,
         mask=None,
         smoothing_fwhm=None,
@@ -368,12 +371,14 @@ class dypac(BaseDecomposition):
             self.n_states * self.n_clusters,
             self.n_jobs,
             self.max_iter,
-            self.threshold_sim
+            self.threshold_sim,
         )
 
         # Generate the stability maps
         if self.verbose:
-            print("[{0}] Generating state stability maps".format(self.__class__.__name__))
+            print(
+                "[{0}] Generating state stability maps".format(self.__class__.__name__)
+            )
         stab_maps, dwell_time = _stab_maps(
             onehot, states, self.n_replications, self.n_states * self.n_clusters
         )
@@ -432,6 +437,6 @@ class dypac(BaseDecomposition):
             max_iter=self.max_iter,
             n_init=self.n_init,
             n_jobs=self.n_jobs,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
         return onehot
