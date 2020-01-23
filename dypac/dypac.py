@@ -7,8 +7,6 @@ Dynamic Parcel Aggregation with Clustering (dypac)
 import glob
 import itertools
 
-import load_confounds
-
 from tqdm import tqdm
 
 from scipy.stats import pearsonr
@@ -120,16 +118,16 @@ def _find_states(onehot, n_init, n_clusters, n_jobs, max_iter, threshold_sim):
 
 def _stab_maps(onehot, states, n_replications, n_states):
     """Generate stability maps associated with different states"""
+    
     stab_maps = np.zeros([onehot.shape[1], n_states])
     dwell_time = np.zeros([n_states, 1])
-
     for ss in range(0, n_states):
         dwell_time[ss] = np.sum(states == ss) / n_replications
         if np.any(states == ss):
             stab_maps[:, ss] = onehot[states == ss, :].mean(dtype='float', axis=0)
 
-    # stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
-    # dwell_time = dwell_time[dwell_time>(1/n_replications)]
+    stab_maps = stab_maps[:,dwell_time>(1/n_replications)]
+    dwell_time = dwell_time[dwell_time>(1/n_replications)]
     return stab_maps, dwell_time
 
 
@@ -400,10 +398,10 @@ class dypac(BaseDecomposition):
         if not hasattr(imgs, "__iter__"):
             imgs = [imgs]
 
-        if confounds is not None:
-            counfounds = load_confounds.load_confounds(confounds)
-        else:
-            confounds = itertools.repeat(confounds)
+        # if confounds is not None:
+        #     counfounds = load_confounds.load_confounds(confounds)
+        # else:
+        #     confounds = itertools.repeat(confounds)
 
         data_list = Parallel(n_jobs=self.n_jobs)(
             delayed(self._mask_and_cluster_single)(img=img, confound=confound)
