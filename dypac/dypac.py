@@ -15,6 +15,7 @@ import numpy as np
 
 from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
+from sklearn.linear_model import LinearRegression
 
 from nilearn import EXPAND_PATH_WILDCARDS
 from nilearn._utils.compat import Memory, Parallel, delayed, _basestring
@@ -23,7 +24,7 @@ from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn._utils.cache_mixin import CacheMixin, cache
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
-
+from nilearn.image import new_img_like
 from load_confounds import load_confounds
 
 def _select_subsample(y, subsample_size, start=None):
@@ -120,16 +121,27 @@ def _find_states(onehot, n_init, n_states, n_jobs, max_iter, threshold_sim):
 def _stab_maps(onehot, states, n_replications, n_states):
     """Generate stability maps associated with different states"""
 
-    stab_maps = np.zeros([onehot.shape[1], n_states])
     dwell_time = np.zeros(n_states)
+    val = np.array([])
+    col_ind = np.array([])
+    row_ind = np.array([])
+
     for ss in range(0, n_states):
         dwell_time[ss] = np.sum(states == ss) / n_replications
         if np.any(states == ss):
-            stab_maps[:, ss] = onehot[states == ss, :].mean(dtype='float', axis=0)
+            stab_map = onehot[states == ss, :].mean(dtype='float', axis=0)
+            mask = stab_map > 0
 
+            col_ind = np.append(col_ind, np.repeat(ss, np.sum(mask)))
+            row_ind = np.append(row_ind, np.nonzero(mask)[1])
+            val = np.append(val, stab_map[mask])
+    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[onehot.shape[1], n_states])
+
+    # Re-order stab maps by descending dwell time
     indsort = np.argsort(-dwell_time)
     stab_maps = stab_maps[:, indsort]
     dwell_time = dwell_time[indsort]
+
     return stab_maps, dwell_time
 
 
@@ -405,7 +417,6 @@ class dypac(BaseDecomposition):
 
         onehot = csr_matrix([0, ])
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
-            img
             if self.verbose:
                 print("[{0}] Replicating clusters on {1}".format(self.__class__.__name__, img))
             if ind > 0:
@@ -415,7 +426,7 @@ class dypac(BaseDecomposition):
         return onehot
 
     def _mask_and_cluster_single(self, img, confound):
-        """Utility function for multiprocessing from _mask_and_reduce"""
+        """Utility function for _mask_and_reduce"""
         this_data = self.masker_.transform(img, confound)
         # Now get rid of the img as fast as possible, to free a
         # reference count on it, and possibly free the corresponding
@@ -433,3 +444,16 @@ class dypac(BaseDecomposition):
             verbose=self.verbose,
         )
         return onehot
+
+    def transform_sparse(self, img, confound=None):
+        """Transform a 4D dataset in a component space"""
+        self._check_components_()
+        this_data = self.masker_.transform(img, confound)
+        del img
+        reg = LinearRegression().fit(self.components_.transpose(), this_data.transpose())
+        return reg.coef_
+
+    def inverse_transform_sparse(self, weights):
+        """Transform component weights as a 4D dataset"""
+        self._check_components_()
+        self.masker_.inverse_transform(weights * self.components_)
