@@ -26,6 +26,7 @@ from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 from nilearn.image import new_img_like
 
+
 def _select_subsample(y, subsample_size, start=None):
     """ Select a random subsample in a data array
     """
@@ -50,8 +51,12 @@ def _part2onehot(part, n_clusters=0):
     n_part, n_voxel = part.shape
     n_el = n_part * n_voxel
     val = np.repeat(True, n_el)
-    ind_r = np.reshape(part, n_el) + np.repeat(np.array(range(n_part)) * n_clusters, n_voxel)
-    ind_c = np.repeat(np.reshape(range(n_voxel), [1, n_voxel]), n_part, axis=0).flatten()
+    ind_r = np.reshape(part, n_el) + np.repeat(
+        np.array(range(n_part)) * n_clusters, n_voxel
+    )
+    ind_c = np.repeat(
+        np.reshape(range(n_voxel), [1, n_voxel]), n_part, axis=0
+    ).flatten()
     s_onehot = [n_part * n_clusters, n_voxel]
     onehot = csr_matrix((val, (ind_r, ind_c)), shape=s_onehot, dtype="bool")
     return onehot
@@ -81,7 +86,7 @@ def _replicate_clusters(
 
     for rr in range_replication:
         samp = _select_subsample(y, subsample_size, list_start[rr])
-        cent, part[rr,:], inert = k_means(
+        cent, part[rr, :], inert = k_means(
             samp,
             n_clusters=n_clusters,
             init="k-means++",
@@ -110,7 +115,7 @@ def _find_states(onehot, n_init, n_states, n_jobs, max_iter, threshold_sim):
             ref_cluster = csr_matrix(parcels.mean(dtype="float", axis=0))
             ref_sim = np.zeros(n_parcels)
             for pp in range(n_parcels):
-                ref_sim[pp] = ref_cluster[parcels[pp,:]].mean(dtype="float")
+                ref_sim[pp] = ref_cluster[parcels[pp, :]].mean(dtype="float")
             tmp = states[states == ss]
             tmp[ref_sim < threshold_sim] = n_states
             states[states == ss] = tmp
@@ -128,7 +133,7 @@ def _stab_maps(onehot, states, n_replications, n_states):
     for ss in range(0, n_states):
         dwell_time[ss] = np.sum(states == ss) / n_replications
         if np.any(states == ss):
-            stab_map = onehot[states == ss, :].mean(dtype='float', axis=0)
+            stab_map = onehot[states == ss, :].mean(dtype="float", axis=0)
             mask = stab_map > 0
 
             col_ind = np.append(col_ind, np.repeat(ss, np.sum(mask)))
@@ -414,12 +419,18 @@ class dypac(BaseDecomposition):
         if confounds is None:
             confounds = itertools.repeat(confounds)
 
-        onehot = csr_matrix([0, ])
+        onehot = csr_matrix([0,])
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
             if self.verbose:
-                print("[{0}] Replicating clusters on {1}".format(self.__class__.__name__, img))
+                print(
+                    "[{0}] Replicating clusters on {1}".format(
+                        self.__class__.__name__, img
+                    )
+                )
             if ind > 0:
-                onehot = vstack([onehot, self._mask_and_cluster_single(img=img, confound=confound)])
+                onehot = vstack(
+                    [onehot, self._mask_and_cluster_single(img=img, confound=confound)]
+                )
             else:
                 onehot = self._mask_and_cluster_single(img=img, confound=confound)
         return onehot
@@ -449,7 +460,9 @@ class dypac(BaseDecomposition):
         self._check_components_()
         this_data = self.masker_.transform(img, confound)
         del img
-        reg = LinearRegression().fit(self.components_.transpose(), this_data.transpose())
+        reg = LinearRegression().fit(
+            self.components_.transpose(), this_data.transpose()
+        )
         return reg.coef_
 
     def inverse_transform_sparse(self, weights):
