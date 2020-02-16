@@ -25,7 +25,6 @@ from nilearn._utils.cache_mixin import CacheMixin, cache
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 from nilearn.image import new_img_like
-from load_confounds import load_confounds
 
 def _select_subsample(y, subsample_size, start=None):
     """ Select a random subsample in a data array
