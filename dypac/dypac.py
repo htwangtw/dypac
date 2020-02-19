@@ -10,12 +10,13 @@ import itertools
 from tqdm import tqdm
 
 from scipy.stats import pearsonr
-from scipy.sparse import csr_matrix, vstack
+from scipy.sparse import csr_matrix, vstack, find
 import numpy as np
 
 from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import scale
 
 from nilearn import EXPAND_PATH_WILDCARDS
 from nilearn._utils.compat import Memory, Parallel, delayed, _basestring
@@ -73,8 +74,43 @@ def _start_window(n_time, n_replications, subsample_size):
     return list_start
 
 
+def _kmeans_init(onehot, init, n_clusters):
+    if init is "random":
+        n_replications = onehot.shape[0]
+        idx = np.random.choice(n_replications, n_clusters, replace=False)
+        centroids = np.array(onehot[idx, :].todense())
+    else:
+        raise ValueError("_kmeans_sparse currently supports only random initialization")
+    return centroids  
+     
+    
+def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, verbose=False):
+    """ Implementation of k-means clustering for sparse and boolean data
+    """
+    [n_replications, nv] = onehot.shape
+    centroids = _kmeans_init(onehot, init, n_clusters)
+    [ix, iy, val] = find(onehot)
+    size_onehot = onehot.sum(axis=1)    
+    for n_iter in tqdm(range(max_iter),disable=not verbose):
+        # Assign each parcel to the centroid with maximal average stability in that centroid
+        avg_stab = np.zeros([n_replications, n_clusters])
+        for cc in range(n_clusters):
+            avg_stab[:, cc] = np.bincount(ix, weights=centroids[cc, iy].flatten())
+        part = np.argmax(avg_stab, axis=1)
+        # Now recompute the centroids
+        centroids = np.zeros([n_clusters, nv])
+        for cc in range(n_clusters):
+            if any(part == cc):
+                centroids[cc, :] = onehot[part == cc, :].mean(axis=0)
+            else:
+                # This cluster is dead
+                # use a random onehot as centroid
+                centroids[cc, :] = np.array(onehot[np.random.randint(n_replications, size=1), :].todense())
+    return part
+        
+                
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose, embedding=np.array([]), normalize=False
 ):
     """ Replicate a clustering on random subsamples
     """
@@ -86,6 +122,10 @@ def _replicate_clusters(
 
     for rr in range_replication:
         samp = _select_subsample(y, subsample_size, list_start[rr])
+        if normalize:
+            samp = scale(samp, axis=1)
+        if embedding.shape[0] > 0:
+            samp = np.concatenate([samp, embedding], axis=1)
         cent, part[rr, :], inert = k_means(
             samp,
             n_clusters=n_clusters,
@@ -97,15 +137,14 @@ def _replicate_clusters(
     return _part2onehot(part, n_clusters)
 
 
-def _find_states(onehot, n_init, n_states, n_jobs, max_iter, threshold_sim):
+def _find_states(onehot, n_states, max_iter, threshold_sim, verbose):
     """Find dynamic states based on the similarity of clusters over time"""
-    cent, states, inert = k_means(
+    states = _kmeans_sparse(
         onehot,
         n_clusters=n_states,
-        init="k-means++",
+        init="random",
         max_iter=max_iter,
-        n_init=n_init,
-        n_jobs=n_jobs,
+        verbose=verbose
     )
 
     for ss in range(n_states):
@@ -383,11 +422,10 @@ class dypac(BaseDecomposition):
             print("[{0}] Finding parcellation states".format(self.__class__.__name__))
         states = _find_states(
             onehot,
-            n_init=self.n_init_aggregation,
             n_states=self.n_states * self.n_clusters,
-            n_jobs=self.n_jobs,
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
+            verbose=self.verbose,
         )
 
         # Generate the stability maps
