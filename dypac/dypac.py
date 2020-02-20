@@ -80,11 +80,11 @@ def _kmeans_init(onehot, init, n_clusters):
         idx = np.random.choice(n_replications, n_clusters, replace=False)
         centroids = np.array(onehot[idx, :].todense())
     else:
-        raise ValueError("_kmeans_sparse currently supports only random initialization")
+        raise ValueError("_kmeans_onehot currently supports only random initialization")
     return centroids  
      
     
-def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, verbose=False):
+def _kmeans_onehot( onehot, n_clusters, init="random", max_iter=30, verbose=False):
     """ Implementation of k-means clustering for sparse and boolean data
     """
     [n_replications, nv] = onehot.shape
@@ -139,7 +139,7 @@ def _replicate_clusters(
 
 def _find_states(onehot, n_states, max_iter, threshold_sim, verbose):
     """Find dynamic states based on the similarity of clusters over time"""
-    states = _kmeans_sparse(
+    states = _kmeans_onehot(
         onehot,
         n_clusters=n_states,
         init="random",
@@ -175,14 +175,15 @@ def _stab_maps(onehot, states, n_replications, n_states):
             stab_map = onehot[states == ss, :].mean(dtype="float", axis=0)
             mask = stab_map > 0
 
-            col_ind = np.append(col_ind, np.repeat(ss, np.sum(mask)))
-            row_ind = np.append(row_ind, np.nonzero(mask)[1])
+            row_ind = np.append(row_ind, np.repeat(ss, np.sum(mask)))
+            col_ind = np.append(col_ind, np.nonzero(mask)[1])
             val = np.append(val, stab_map[mask])
-    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[onehot.shape[1], n_states])
+    print(onehot.shape)
+    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[n_states, onehot.shape[1]])
 
     # Re-order stab maps by descending dwell time
     indsort = np.argsort(-dwell_time)
-    stab_maps = stab_maps[:, indsort]
+    stab_maps = stab_maps[indsort, :]
     dwell_time = dwell_time[indsort]
 
     return stab_maps, dwell_time
@@ -413,29 +414,26 @@ class dypac(BaseDecomposition):
         self.mask_img_ = self.masker_.mask_img_
 
         # mask_and_reduce step
-        if self.verbose:
-            print("[{0}] Loading data".format(self.__class__.__name__))
-        onehot = self._mask_and_reduce(imgs, confounds)
+        stab_maps_all, dwell_time_all = self._mask_and_reduce(imgs, confounds)
 
-        # find the states
-        if self.verbose:
-            print("[{0}] Finding parcellation states".format(self.__class__.__name__))
-        states = _find_states(
-            onehot,
-            n_states=self.n_states * self.n_clusters,
-            max_iter=self.max_iter,
-            threshold_sim=self.threshold_sim,
-            verbose=self.verbose,
-        )
-
-        # Generate the stability maps
-        if self.verbose:
-            print(
-                "[{0}] Generating state stability maps".format(self.__class__.__name__)
+        # find the consensus states across datasets
+        if len(imgs) > 1:
+            if self.verbose:
+                print("[{0}] Finding global consensus parcellation states".format(self.__class__.__name__))
+            states, stab_maps = _kmeans_onehot(
+                stab_maps_all,
+                n_states=self.n_states,
+                max_iter=self.max_iter,
+                verbose=self.verbose,
             )
-        stab_maps, dwell_time = _stab_maps(
-            onehot, states, self.n_replications, self.n_states * self.n_clusters
-        )
+
+            # Summarize dwell times
+            _, counts = np.unique(states)
+            dwell_time = np.bincount(states, weights=dwell_time_all)
+            dwell_time[dwell_time>0] = np.divide(dwell_time[dwell_time>0], counts)
+        else:
+            stab_maps = stab_maps_all
+            dwell_time = dwell_time_all
 
         # Return components
         self.components_ = stab_maps.transpose()
@@ -457,24 +455,29 @@ class dypac(BaseDecomposition):
         if confounds is None:
             confounds = itertools.repeat(confounds)
 
-        onehot = csr_matrix([0,])
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
-            if self.verbose:
-                print(
-                    "[{0}] Replicating clusters on {1}".format(
-                        self.__class__.__name__, img
-                    )
-                )
+            stab_maps, dwell_time = self._mask_and_cluster_single(img=img, confound=confound)
             if ind > 0:
-                onehot = vstack(
-                    [onehot, self._mask_and_cluster_single(img=img, confound=confound)]
+                # Stack all the stab maps as rows
+                stab_maps_all = vstack(
+                    [stab_maps_all, self._mask_and_cluster_single(img=img, confound=confound)]
                 )
+                # Concatenate all the dwell times in a big vector
+                dwell_time_all = dwell_time_all + dwell_time
             else:
-                onehot = self._mask_and_cluster_single(img=img, confound=confound)
-        return onehot
+                stab_maps_all = stab_maps
+                dwell_time_all = dwell_time
+        return stab_maps_all, dwell_time_all
 
     def _mask_and_cluster_single(self, img, confound):
         """Utility function for _mask_and_reduce"""
+        if self.verbose:
+            print(
+                "[{0}] Replicating clusters on {1}".format(
+                    self.__class__.__name__, img
+            )
+        )
+
         this_data = self.masker_.transform(img, confound)
         # Now get rid of the img as fast as possible, to free a
         # reference count on it, and possibly free the corresponding
@@ -491,7 +494,28 @@ class dypac(BaseDecomposition):
             n_jobs=self.n_jobs,
             verbose=self.verbose,
         )
-        return onehot
+        
+        # find the states
+        if self.verbose:
+            print("[{0}] Finding parcellation states on {1}".format(self.__class__.__name__, img))
+        states = _find_states(
+            onehot,
+            n_states=self.n_states,
+            max_iter=self.max_iter,
+            threshold_sim=self.threshold_sim,
+            verbose=self.verbose,
+        )
+
+        # Generate the stability maps
+        if self.verbose:
+            print(
+                "[{0}] Generating state stability maps".format(self.__class__.__name__)
+            )
+        stab_maps, dwell_time = _stab_maps(
+            onehot, states, self.n_replications, self.n_states * self.n_clusters
+        )
+
+        return stab_maps, dwell_time
 
     def transform_sparse(self, img, confound=None):
         """Transform a 4D dataset in a component space"""
