@@ -83,10 +83,36 @@ def _kmeans_init(onehot, init, n_clusters):
         raise ValueError("_kmeans_sparse currently supports only random initialization")
     return centroids  
      
+
+def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=0, verbose=False, threshold_sim=0.3):
+    """ Iteration of consensus clustering over batches of onehot
+    """
+    index_batch = np.unique(np.floor(np.linspace(0, onehot.shape[0], n_batch)))
     
-def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, verbose=False):
+    # Iterate across all batches
+    for bb in range(n_batch):
+        part, centroids = _kmeans_sparse( onehot[range(index_batch[bb], index_batch[bb+1], 
+                                    n_clusters=n_clusters, init=init, max_iter=max_iter, 
+                                    n_batch=0, verbose=verbose)
+        if bb == 0:
+            part_batch = 
+            onehot_batch = csr_matrix(centroids>threshold_sim)
+        else:
+            onehot_batch = vstack([onehot_batch, csr_matrix(centroids>threshold_sim)])
+    
+    # Now apply consensus clustering on the binarized centroids
+    part_cons, centroids_cons = _kmeans_sparse( onehot_batch, 
+                                    n_clusters=n_clusters, init=init, max_iter=max_iter, 
+                                    n_batch=0, verbose=verbose)
+    
+                                                 
+                                                 
+    
+def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, verbose=False, threshold_sim=0.3):
     """ Implementation of k-means clustering for sparse and boolean data
     """
+    if n_batch>0:
+        part = _kmeans_batch(onehot, n_clusters=n_clusters, init=init, max_iter=max_iter, verbose=verbose)
     [n_replications, nv] = onehot.shape
     centroids = _kmeans_init(onehot, init, n_clusters)
     [ix, iy, val] = find(onehot)
@@ -106,7 +132,7 @@ def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, verbose=Fals
                 # This cluster is dead
                 # use a random onehot as centroid
                 centroids[cc, :] = np.array(onehot[np.random.randint(n_replications, size=1), :].todense())
-    return part
+    return part, centroids
         
                 
 def _replicate_clusters(
@@ -137,14 +163,16 @@ def _replicate_clusters(
     return _part2onehot(part, n_clusters)
 
 
-def _find_states(onehot, n_states, max_iter, threshold_sim, verbose):
+def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, verbose=False):
     """Find dynamic states based on the similarity of clusters over time"""
     states = _kmeans_sparse(
         onehot,
         n_clusters=n_states,
         init="random",
         max_iter=max_iter,
-        verbose=verbose
+        threshold_sim=threshold_sim,
+        n_batch=n_batch,
+        verbose=verbose,
     )
 
     for ss in range(n_states):
@@ -196,17 +224,24 @@ class dypac(BaseDecomposition):
     n_clusters: int
         Number of clusters to extract per time window
 
+    n_states: int
+        Number of expected dynamic states
+        
+    n_replications: int
+        Number of replications of cluster analysis in each fMRI run
+
+    n_batch: int
+        Number of batches to run through consensus clustering. 
+        If n_batch=0, consensus clustering will be applied 
+        to all replications in one pass. Processing with batch will 
+        reduce dramatically the compute time, but will change slightly 
+        the results.
+
     n_init: int
         Number of initializations for k-means
 
     subsample_size: int
         Number of time points in a subsample
-
-    n_states: int
-        Number of expected states per cluster
-
-    n_replications: int
-        Number of replications of cluster analysis in each fMRI run
 
     max_iter: int
         Max number of iterations for k-means
@@ -299,11 +334,12 @@ class dypac(BaseDecomposition):
     def __init__(
         self,
         n_clusters=10,
+        n_states=3,
+        n_replications=40,
+        n_batch=0,
         n_init=30,
         n_init_aggregation=100,
         subsample_size=30,
-        n_states=3,
-        n_replications=40,
         max_iter=30,
         threshold_sim=0.3,
         random_state=None,
@@ -425,6 +461,7 @@ class dypac(BaseDecomposition):
             n_states=self.n_states * self.n_clusters,
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
+            n_batch=self.n_batch,
             verbose=self.verbose,
         )
 
