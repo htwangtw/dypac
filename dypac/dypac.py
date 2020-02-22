@@ -84,35 +84,66 @@ def _kmeans_init(onehot, init, n_clusters):
     return centroids  
      
 
-def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=0, verbose=False, threshold_sim=0.3):
+def _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons):
+    """ Combine partitions across batches with the within-batch partitions
+    """
+    part = np.zeros(part_batch.shape)
+    for bb in range(n_batch):
+        range_batch = range(index_batch[bb], index_batch[bb+1])
+        range_cons = range(index_cons[bb], index_cons[bb+1])
+        sub_batch = part_batch[range_batch]
+        sub_cons = part_cons[range_cons]
+        part[range_batch] = sub_cons[sub_batch]
+    
+    return part
+
+            
+def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, verbose=False, threshold_sim=0.3):
     """ Iteration of consensus clustering over batches of onehot
     """
-    index_batch = np.unique(np.floor(np.linspace(0, onehot.shape[0], n_batch)))
+    index_batch = np.unique(np.floor(np.linspace(0, onehot.shape[0], n_batch + 1)).astype("int"))
     
     # Iterate across all batches
+    if verbose:
+        print("    Running consensus clustering on each batch")    
     for bb in range(n_batch):
-        part, centroids = _kmeans_sparse( onehot[range(index_batch[bb], index_batch[bb+1], 
+        part, centroids = _kmeans_sparse( onehot[range(index_batch[bb], index_batch[bb+1]), :], 
                                     n_clusters=n_clusters, init=init, max_iter=max_iter, 
                                     n_batch=0, verbose=verbose)
         if bb == 0:
-            part_batch = 
+            curr_pos = centroids.shape[0]
+            index_cons = np.array([0, curr_pos])
+            part_batch = part 
             onehot_batch = csr_matrix(centroids>threshold_sim)
         else:
+            curr_pos = curr_pos + centroids.shape[0]
+            index_cons = np.hstack([index_cons, curr_pos])
+            part_batch = part_batch + part
             onehot_batch = vstack([onehot_batch, csr_matrix(centroids>threshold_sim)])
     
     # Now apply consensus clustering on the binarized centroids
+    if verbose:
+        print("Running consensus clustering across batches")    
     part_cons, centroids_cons = _kmeans_sparse( onehot_batch, 
                                     n_clusters=n_clusters, init=init, max_iter=max_iter, 
                                     n_batch=0, verbose=verbose)
     
-                                                 
+    # Finally propagate the batch level partition to the original onehots
+    if verbose:
+        print("Propagate between-batch labels within-batch")    
+    part = _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons)
+            
+    return part
                                                  
     
 def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, verbose=False, threshold_sim=0.3):
     """ Implementation of k-means clustering for sparse and boolean data
     """
+    # in case the functions is called on multiple batches, call _kmeans_batch instead
     if n_batch>0:
         part = _kmeans_batch(onehot, n_clusters=n_clusters, init=init, max_iter=max_iter, verbose=verbose)
+        return part
+    
     [n_replications, nv] = onehot.shape
     centroids = _kmeans_init(onehot, init, n_clusters)
     [ix, iy, val] = find(onehot)
