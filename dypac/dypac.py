@@ -87,7 +87,7 @@ def _kmeans_init(onehot, init, n_clusters):
 def _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons):
     """ Combine partitions across batches with the within-batch partitions
     """
-    part = np.zeros(part_batch.shape)
+    part = np.zeros(part_batch.shape, dtype=np.int32)
     for bb in range(n_batch):
         range_batch = range(index_batch[bb], index_batch[bb+1])
         range_cons = range(index_cons[bb], index_cons[bb+1])
@@ -104,12 +104,10 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
     index_batch = np.unique(np.floor(np.linspace(0, onehot.shape[0], n_batch + 1)).astype("int"))
     
     # Iterate across all batches
-    if verbose:
-        print("    Running consensus clustering on each batch")    
-    for bb in range(n_batch):
+    for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
         part, centroids = _kmeans_sparse( onehot[range(index_batch[bb], index_batch[bb+1]), :], 
                                     n_clusters=n_clusters, init=init, max_iter=max_iter, 
-                                    n_batch=0, verbose=verbose)
+                                    n_batch=0, verbose=False)
         if bb == 0:
             curr_pos = centroids.shape[0]
             index_cons = np.array([0, curr_pos])
@@ -118,7 +116,7 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
         else:
             curr_pos = curr_pos + centroids.shape[0]
             index_cons = np.hstack([index_cons, curr_pos])
-            part_batch = part_batch + part
+            part_batch = np.hstack([part_batch, part])
             onehot_batch = vstack([onehot_batch, csr_matrix(centroids>threshold_sim)])
     
     # Now apply consensus clustering on the binarized centroids
@@ -130,7 +128,7 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
     
     # Finally propagate the batch level partition to the original onehots
     if verbose:
-        print("Propagate between-batch labels within-batch")    
+        print("Propagate labels from between- to within- batch")    
     part = _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons)
             
     return part
@@ -141,14 +139,14 @@ def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, v
     """
     # in case the functions is called on multiple batches, call _kmeans_batch instead
     if n_batch>0:
-        part = _kmeans_batch(onehot, n_clusters=n_clusters, init=init, max_iter=max_iter, verbose=verbose)
+        part = _kmeans_batch(onehot, n_clusters=n_clusters, n_batch=n_batch, init=init, max_iter=max_iter, verbose=verbose)
         return part
     
     [n_replications, nv] = onehot.shape
     centroids = _kmeans_init(onehot, init, n_clusters)
     [ix, iy, val] = find(onehot)
     size_onehot = onehot.sum(axis=1)    
-    for n_iter in tqdm(range(max_iter),disable=not verbose):
+    for n_iter in tqdm(range(max_iter), disable=not verbose):
         # Assign each parcel to the centroid with maximal average stability in that centroid
         avg_stab = np.zeros([n_replications, n_clusters])
         for cc in range(n_clusters):
