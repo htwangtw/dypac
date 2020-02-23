@@ -120,21 +120,17 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
             onehot_batch = vstack([onehot_batch, csr_matrix(centroids>threshold_sim)])
     
     # Now apply consensus clustering on the binarized centroids
-    if verbose:
-        print("Running consensus clustering across batches")    
     part_cons, centroids_cons = _kmeans_sparse( onehot_batch, 
                                     n_clusters=n_clusters, init=init, max_iter=max_iter, 
-                                    n_batch=0, verbose=verbose)
+                                    n_batch=0, verbose=verbose, desc="Inter-batch consensus")
     
     # Finally propagate the batch level partition to the original onehots
-    if verbose:
-        print("Propagate labels from between- to within- batch")    
     part = _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons)
             
     return part
                                                  
     
-def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, verbose=False, threshold_sim=0.3):
+def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, verbose=False, threshold_sim=0.3, desc=""):
     """ Implementation of k-means clustering for sparse and boolean data
     """
     # in case the functions is called on multiple batches, call _kmeans_batch instead
@@ -146,7 +142,7 @@ def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, v
     centroids = _kmeans_init(onehot, init, n_clusters)
     [ix, iy, val] = find(onehot)
     size_onehot = onehot.sum(axis=1)    
-    for n_iter in tqdm(range(max_iter), disable=not verbose):
+    for n_iter in tqdm(range(max_iter), disable=not verbose, desc=desc):
         # Assign each parcel to the centroid with maximal average stability in that centroid
         avg_stab = np.zeros([n_replications, n_clusters])
         for cc in range(n_clusters):
@@ -165,17 +161,15 @@ def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, v
         
                 
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose, embedding=np.array([]), normalize=False
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose, embedding=np.array([]), desc="", normalize=False
 ):
     """ Replicate a clustering on random subsamples
     """
     part = np.zeros([n_replications, y.shape[0]], dtype="int")
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
     range_replication = range(n_replications)
-    if verbose:
-        range_replication = tqdm(range_replication)
-
-    for rr in range_replication:
+    
+    for rr in tqdm(range_replication, disable=not verbose, desc=desc):
         samp = _select_subsample(y, subsample_size, list_start[rr])
         if normalize:
             samp = scale(samp, axis=1)
@@ -204,7 +198,7 @@ def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0,
         verbose=verbose,
     )
 
-    for ss in range(n_states):
+    for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
         if np.any(states == ss):
             parcels = onehot[states == ss, :]
             n_parcels = np.sum(states == ss)
@@ -409,12 +403,12 @@ class dypac(BaseDecomposition):
 
         # Those settings are specific to parcel aggregation
         self.n_clusters = n_clusters
+        self.n_states = n_states
+        self.n_batch = n_batch
+        self.n_replications = n_replications
         self.n_init = n_init
         self.n_init_aggregation = n_init_aggregation
         self.subsample_size = subsample_size
-        self.n_clusters = n_clusters
-        self.n_states = n_states
-        self.n_replications = n_replications
         self.max_iter = max_iter
         self.threshold_sim = threshold_sim
 
@@ -483,8 +477,6 @@ class dypac(BaseDecomposition):
         onehot = self._mask_and_reduce(imgs, confounds)
 
         # find the states
-        if self.verbose:
-            print("[{0}] Finding parcellation states".format(self.__class__.__name__))
         states = _find_states(
             onehot,
             n_states=self.n_states * self.n_clusters,
@@ -495,10 +487,6 @@ class dypac(BaseDecomposition):
         )
 
         # Generate the stability maps
-        if self.verbose:
-            print(
-                "[{0}] Generating state stability maps".format(self.__class__.__name__)
-            )
         stab_maps, dwell_time = _stab_maps(
             onehot, states, self.n_replications, self.n_states * self.n_clusters
         )
@@ -525,21 +513,15 @@ class dypac(BaseDecomposition):
 
         onehot = csr_matrix([0,])
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
-            if self.verbose:
-                print(
-                    "[{0}] Replicating clusters on {1}".format(
-                        self.__class__.__name__, img
-                    )
-                )
             if ind > 0:
                 onehot = vstack(
-                    [onehot, self._mask_and_cluster_single(img=img, confound=confound)]
+                    [onehot, self._mask_and_cluster_single(img=img, confound=confound, ind=ind)]
                 )
             else:
-                onehot = self._mask_and_cluster_single(img=img, confound=confound)
+                onehot = self._mask_and_cluster_single(img=img, confound=confound, ind=ind)
         return onehot
 
-    def _mask_and_cluster_single(self, img, confound):
+    def _mask_and_cluster_single(self, img, confound, ind):
         """Utility function for _mask_and_reduce"""
         this_data = self.masker_.transform(img, confound)
         # Now get rid of the img as fast as possible, to free a
@@ -555,6 +537,7 @@ class dypac(BaseDecomposition):
             max_iter=self.max_iter,
             n_init=self.n_init,
             n_jobs=self.n_jobs,
+            desc="Replicating clusters in data #{0}".format(ind),
             verbose=self.verbose,
         )
         return onehot
