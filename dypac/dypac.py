@@ -107,7 +107,7 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
     for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
         part, centroids = _kmeans_sparse( onehot[range(index_batch[bb], index_batch[bb+1]), :], 
                                     n_clusters=n_clusters, init=init, max_iter=max_iter, 
-                                    n_batch=0, verbose=False)
+                                    verbose=False)
         if bb == 0:
             curr_pos = centroids.shape[0]
             index_cons = np.array([0, curr_pos])
@@ -122,7 +122,7 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
     # Now apply consensus clustering on the binarized centroids
     part_cons, centroids_cons = _kmeans_sparse( onehot_batch, 
                                     n_clusters=n_clusters, init=init, max_iter=max_iter, 
-                                    n_batch=0, verbose=verbose, desc="Inter-batch consensus")
+                                    verbose=verbose, desc="Inter-batch consensus")
     
     # Finally propagate the batch level partition to the original onehots
     part = _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons)
@@ -130,14 +130,9 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
     return part
                                                  
     
-def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, n_batch=0, verbose=False, threshold_sim=0.3, desc=""):
+def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, verbose=False, desc=""):
     """ Implementation of k-means clustering for sparse and boolean data
     """
-    # in case the functions is called on multiple batches, call _kmeans_batch instead
-    if n_batch>0:
-        part = _kmeans_batch(onehot, n_clusters=n_clusters, n_batch=n_batch, init=init, max_iter=max_iter, verbose=verbose)
-        return part
-    
     [n_replications, nv] = onehot.shape
     centroids = _kmeans_init(onehot, init, n_clusters)
     [ix, iy, val] = find(onehot)
@@ -188,16 +183,25 @@ def _replicate_clusters(
 
 def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, verbose=False):
     """Find dynamic states based on the similarity of clusters over time"""
-    states = _kmeans_sparse(
-        onehot,
-        n_clusters=n_states,
-        init="random",
-        max_iter=max_iter,
-        threshold_sim=threshold_sim,
-        n_batch=n_batch,
-        verbose=verbose,
-    )
-
+    if n_batch > 1:
+        states = _kmeans_batch(
+            onehot,
+            n_clusters=n_states,
+            init="random",
+            max_iter=max_iter,
+            threshold_sim=threshold_sim,
+            n_batch=n_batch,
+            verbose=verbose,
+        )
+    else: 
+        states, _ = _kmeans_sparse(
+            onehot,
+            n_clusters=n_states,
+            init="random",
+            max_iter=max_iter,
+            desc="Consensus clustering",
+            verbose=verbose,
+        )
     for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
         if np.any(states == ss):
             parcels = onehot[states == ss, :]
@@ -255,7 +259,7 @@ class dypac(BaseDecomposition):
 
     n_batch: int
         Number of batches to run through consensus clustering. 
-        If n_batch=0, consensus clustering will be applied 
+        If n_batch<=1, consensus clustering will be applied 
         to all replications in one pass. Processing with batch will 
         reduce dramatically the compute time, but will change slightly 
         the results.
@@ -359,7 +363,7 @@ class dypac(BaseDecomposition):
         n_clusters=10,
         n_states=3,
         n_replications=40,
-        n_batch=0,
+        n_batch=1,
         n_init=30,
         n_init_aggregation=100,
         subsample_size=30,
