@@ -89,3 +89,123 @@ def test7_part2onehot():
     dypac_onehot = dypac._part2onehot(test["part"], test["clusters"]).toarray()
 
     assert np.array_equal(dypac_onehot, test["one_hot"])
+
+
+def test_start_window():
+
+    n_time = 140
+    n_replications = 5
+    subsample_size = 30
+
+    starts = [0, 27, 55, 83, 111]
+
+    dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    assert np.array_equal(dypac_window, starts)
+
+
+def test1_start_window():
+
+    n_time = 140
+    n_replications = 10
+    subsample_size = 30
+
+    starts = [0.0, 12.0, 24.0, 37.0, 49.0, 61.0, 74.0, 86.0, 98.0, 111.0]
+
+    dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    assert np.array_equal(dypac_window, starts)
+
+
+def test2_start_window():
+
+    n_time = 29
+    n_replications = 10
+    subsample_size = 30
+
+    starts = []
+
+    dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    print(dypac_window)
+
+    assert np.array_equal(dypac_window, starts)
+
+
+def test3_start_window():
+
+    n_time = 5
+    n_replications = 10
+    subsample_size = 30
+
+    starts = []
+
+    with pytest.raises(ValueError, match="-24, must be non-negative."):
+        dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+
+def test4_start_window():
+
+    n_time = -1
+    n_replications = 10
+    subsample_size = 30
+
+    starts = []
+
+    with pytest.raises(ValueError, match="-30, must be non-negative."):
+        dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    # return dypac_window
+
+
+def test5_start_window():
+
+    n_time = 140
+    n_replications = 10
+    subsample_size = 1
+
+    starts = [0.0, 15.0, 31.0, 46.0, 62.0, 77.0, 93.0, 108.0, 124.0, 140.0]
+
+    dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    assert np.array_equal(dypac_window, starts)
+
+
+def test6_start_window():
+
+    n_time = 140
+    n_replications = 0
+    subsample_size = 1
+
+    starts = []
+    dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    print(dypac_window)
+
+    assert np.array_equal(dypac_window, starts)
+
+
+def test7_start_window():
+
+    n_time = 140
+    n_replications = 120
+    subsample_size = 130
+
+    starts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
+    dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    print(dypac_window)
+
+    assert np.array_equal(dypac_window, starts)
+
+
+def test8_start_window():
+
+    n_time = 0
+    n_replications = 0
+    subsample_size = 0
+
+    starts = []
+    dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
+
+    assert np.array_equal(dypac_window, starts)
