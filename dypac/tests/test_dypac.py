@@ -127,8 +127,6 @@ def test2_start_window():
 
     dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
 
-    print(dypac_window)
-
     assert np.array_equal(dypac_window, starts)
 
 
@@ -155,8 +153,6 @@ def test4_start_window():
     with pytest.raises(ValueError, match="-30, must be non-negative."):
         dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
 
-    # return dypac_window
-
 
 def test5_start_window():
 
@@ -180,8 +176,6 @@ def test6_start_window():
     starts = []
     dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
 
-    print(dypac_window)
-
     assert np.array_equal(dypac_window, starts)
 
 
@@ -193,8 +187,6 @@ def test7_start_window():
 
     starts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
     dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
-
-    print(dypac_window)
 
     assert np.array_equal(dypac_window, starts)
 
@@ -209,3 +201,89 @@ def test8_start_window():
     dypac_window = dypac._start_window(n_time, n_replications, subsample_size)
 
     assert np.array_equal(dypac_window, starts)
+
+
+def test_select_subsample():
+
+    y = np.zeros([4, 3])
+    subsample_size = 1
+    start = 1
+    dypac_sample = dypac._select_subsample(y, subsample_size, start)
+    subsample = [[0.0], [0.0], [0.0], [0.0]]
+    assert np.array_equal(dypac_sample, subsample)
+
+
+def test2_select_subsample():
+
+    y = np.zeros([4, 3])
+    subsample_size = 2
+    start = 1
+    dypac_sample = dypac._select_subsample(y, subsample_size, start)
+    subsample = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+
+    assert np.array_equal(dypac_sample, subsample)
+
+
+def test3_select_subsample():
+
+    y = np.zeros([4, 3])
+    subsample_size = -2
+    start = 1
+    dypac_sample = dypac._select_subsample(y, subsample_size, start)
+    subsample = np.empty((4, 0))
+    assert np.array_equal(dypac_sample, subsample)
+
+
+def test4_select_subsample():
+
+    y = np.zeros([4, 3])
+    subsample_size = 2
+    start = -4
+    subsample = np.empty((4, 0))
+
+    with pytest.raises(IndexError, match="-4 is out of bounds for axis 1"):
+        dypac_sample = dypac._select_subsample(y, subsample_size, start)
+
+
+def test5_select_subsample():
+
+    y = np.zeros([4, 3])
+    subsample_size = 0
+    start = 1
+    dypac_sample = dypac._select_subsample(y, subsample_size, start)
+    subsample = np.empty((4, 0))
+
+    assert np.array_equal(dypac_sample, subsample)
+
+
+def test6_select_subsample():
+
+    y = np.zeros([4, 3])
+    subsample_size = 1
+    start = 0
+    dypac_sample = dypac._select_subsample(y, subsample_size, start)
+    subsample = [[0.0], [0.0], [0.0], [0.0]]
+
+    assert np.array_equal(dypac_sample, subsample)
+
+
+def test7_select_subsample():
+
+    y = np.zeros([4, 3])
+    subsample_size = 0
+    start = 0
+    dypac_sample = dypac._select_subsample(y, subsample_size, start)
+    subsample = np.empty((4, 0))
+
+    assert np.array_equal(dypac_sample, subsample)
+
+
+def test8_select_subsample():
+
+    y = np.zeros([0, 0])
+    subsample_size = 1
+    start = 1
+    dypac_sample = dypac._select_subsample(y, subsample_size, start)
+    subsample = np.empty((0, 0))
+
+    assert np.array_equal(dypac_sample, subsample)
