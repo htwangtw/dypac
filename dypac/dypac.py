@@ -84,7 +84,7 @@ def _kmeans_init(onehot, init, n_clusters):
     return centroids  
      
 
-def _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons):
+def _propagate_part(part_batch, part_cons, n_batch, index_cons):
     """ Combine partitions across batches with the within-batch partitions
     """
     part = np.zeros(part_batch.shape, dtype=np.int32)
@@ -98,11 +98,12 @@ def _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons):
     return part
 
             
-def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, verbose=False, threshold_sim=0.3):
+def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_init=10, n_jobs=1, verbose=False, threshold_sim=0.3):
     """ Iteration of consensus clustering over batches of onehot
     """
     
     # Iterate across all batches
+    part_batch = np.zeros([onehot.shape[0]], dtype="int")
     for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
         index_batch = np.unique(np.floor(np.arange(bb, onehot.shape[0], n_batch)).astype("int"))
         part, centroids = _kmeans_sparse( onehot[index_batch, :], 
@@ -111,21 +112,25 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, ve
         if bb == 0:
             curr_pos = centroids.shape[0]
             index_cons = np.array([0, curr_pos])
-            part_batch = part 
-            onehot_batch = csr_matrix(centroids>threshold_sim)
+            stab_batch = csr_matrix(centroids)
         else:
             curr_pos = curr_pos + centroids.shape[0]
             index_cons = np.hstack([index_cons, curr_pos])
-            part_batch = np.hstack([part_batch, part])
-            onehot_batch = vstack([onehot_batch, csr_matrix(centroids>threshold_sim)])
-    
+            stab_batch = vstack([stab_batch, csr_matrix(centroids)])
+        part_batch[index_batch] = part 
+            
     # Now apply consensus clustering on the binarized centroids
-    part_cons, centroids_cons = _kmeans_sparse( onehot_batch, 
-                                    n_clusters=n_clusters, init=init, max_iter=max_iter, 
-                                    verbose=verbose, desc="Inter-batch consensus")
+    cent, part_cons, inert = k_means(
+            stab_batch,
+            n_clusters=n_clusters,
+            init="k-means++",
+            max_iter=max_iter,
+            n_init=n_init,
+            n_jobs=n_jobs,
+        )
     
     # Finally propagate the batch level partition to the original onehots
-    part = _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons)
+    part = _propagate_part(part_batch, part_cons, n_batch, index_cons)
             
     return part
                                                  
@@ -181,7 +186,7 @@ def _replicate_clusters(
     return _part2onehot(part, n_clusters)
 
 
-def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, verbose=False):
+def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, n_jobs=1, verbose=False):
     """Find dynamic states based on the similarity of clusters over time"""
     if n_batch > 1:
         states = _kmeans_batch(
@@ -191,6 +196,8 @@ def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0,
             max_iter=max_iter,
             threshold_sim=threshold_sim,
             n_batch=n_batch,
+            n_init=n_init,
+            n_jobs=n_jobs,
             verbose=verbose,
         )
     else: 
@@ -487,6 +494,8 @@ class dypac(BaseDecomposition):
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
             n_batch=self.n_batch,
+            n_init=self.n_init,
+            n_jobs=self.n_jobs,
             verbose=self.verbose,
         )
 
