@@ -89,7 +89,7 @@ def _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons):
     """
     part = np.zeros(part_batch.shape, dtype=np.int32)
     for bb in range(n_batch):
-        range_batch = range(index_batch[bb], index_batch[bb+1])
+        range_batch = np.unique(np.floor(np.arange(bb, part_batch.shape[0], n_batch)).astype("int"))
         range_cons = range(index_cons[bb], index_cons[bb+1])
         sub_batch = part_batch[range_batch]
         sub_cons = part_cons[range_cons]
@@ -101,11 +101,11 @@ def _propagate_part(part_batch, part_cons, n_batch, index_batch, index_cons):
 def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, verbose=False, threshold_sim=0.3):
     """ Iteration of consensus clustering over batches of onehot
     """
-    index_batch = np.unique(np.floor(np.linspace(0, onehot.shape[0], n_batch + 1)).astype("int"))
     
     # Iterate across all batches
     for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
-        part, centroids = _kmeans_sparse( onehot[range(index_batch[bb], index_batch[bb+1]), :], 
+        index_batch = np.unique(np.floor(np.arange(bb, onehot.shape[0], n_batch)).astype("int"))
+        part, centroids = _kmeans_sparse( onehot[index_batch, :], 
                                     n_clusters=n_clusters, init=init, max_iter=max_iter, 
                                     verbose=False)
         if bb == 0:
