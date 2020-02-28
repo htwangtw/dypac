@@ -72,16 +72,6 @@ def _start_window(n_time, n_replications, subsample_size):
     list_start = np.floor(list_start)
     list_start = np.unique(list_start)
     return list_start
-
-
-def _kmeans_init(onehot, init, n_clusters):
-    if init is "random":
-        n_replications = onehot.shape[0]
-        idx = np.random.choice(n_replications, n_clusters, replace=False)
-        centroids = np.array(onehot[idx, :].todense())
-    else:
-        raise ValueError("_kmeans_sparse currently supports only random initialization")
-    return centroids  
      
 
 def _propagate_part(part_batch, part_cons, n_batch, index_cons):
@@ -98,7 +88,7 @@ def _propagate_part(part_batch, part_cons, n_batch, index_cons):
     return part
 
             
-def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_init=10, n_jobs=1, verbose=False, threshold_sim=0.3):
+def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_init=10, verbose=False, threshold_sim=0.3):
     """ Iteration of consensus clustering over batches of onehot
     """
     
@@ -106,9 +96,13 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_
     part_batch = np.zeros([onehot.shape[0]], dtype="int")
     for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
         index_batch = np.unique(np.floor(np.arange(bb, onehot.shape[0], n_batch)).astype("int"))
-        part, centroids = _kmeans_sparse( onehot[index_batch, :], 
-                                    n_clusters=n_clusters, init=init, max_iter=max_iter, 
-                                    verbose=False)
+        centroids, part, inert = k_means(
+            onehot[index_batch, :],
+            n_clusters=n_clusters,
+            init="k-means++",
+            max_iter=max_iter,
+            n_init=n_init,
+        )
         if bb == 0:
             curr_pos = centroids.shape[0]
             index_cons = np.array([0, curr_pos])
@@ -126,7 +120,6 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_
             init="k-means++",
             max_iter=max_iter,
             n_init=n_init,
-            n_jobs=n_jobs,
         )
     
     # Finally propagate the batch level partition to the original onehots
@@ -135,33 +128,8 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_
     return part
                                                  
     
-def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, verbose=False, desc=""):
-    """ Implementation of k-means clustering for sparse and boolean data
-    """
-    [n_replications, nv] = onehot.shape
-    centroids = _kmeans_init(onehot, init, n_clusters)
-    [ix, iy, val] = find(onehot)
-    size_onehot = onehot.sum(axis=1)    
-    for n_iter in tqdm(range(max_iter), disable=not verbose, desc=desc):
-        # Assign each parcel to the centroid with maximal average stability in that centroid
-        avg_stab = np.zeros([n_replications, n_clusters])
-        for cc in range(n_clusters):
-            avg_stab[:, cc] = np.bincount(ix, weights=centroids[cc, iy].flatten())
-        part = np.argmax(avg_stab, axis=1)
-        # Now recompute the centroids
-        centroids = np.zeros([n_clusters, nv])
-        for cc in range(n_clusters):
-            if any(part == cc):
-                centroids[cc, :] = onehot[part == cc, :].mean(axis=0)
-            else:
-                # This cluster is dead
-                # use a random onehot as centroid
-                centroids[cc, :] = np.array(onehot[np.random.randint(n_replications, size=1), :].todense())
-    return part, centroids
-        
-                
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose, embedding=np.array([]), desc="", normalize=False
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, verbose, embedding=np.array([]), desc="", normalize=False
 ):
     """ Replicate a clustering on random subsamples
     """
@@ -181,12 +149,11 @@ def _replicate_clusters(
             init="k-means++",
             max_iter=max_iter,
             n_init=n_init,
-            n_jobs=n_jobs,
         )
     return _part2onehot(part, n_clusters)
 
 
-def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, n_jobs=1, verbose=False):
+def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, verbose=False):
     """Find dynamic states based on the similarity of clusters over time"""
     if n_batch > 1:
         states = _kmeans_batch(
@@ -197,31 +164,36 @@ def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0,
             threshold_sim=threshold_sim,
             n_batch=n_batch,
             n_init=n_init,
-            n_jobs=n_jobs,
             verbose=verbose,
         )
     else: 
-        states, _ = _kmeans_sparse(
+        if verbose:
+            print("Consensus clustering.")
+        cent, states, inert = k_means(
             onehot,
             n_clusters=n_states,
-            init="random",
+            init="k-means++",
             max_iter=max_iter,
-            desc="Consensus clustering",
-            verbose=verbose,
+            n_init=n_init,
         )
-    for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
-        if np.any(states == ss):
-            parcels = onehot[states == ss, :]
-            n_parcels = np.sum(states == ss)
-            ref_cluster = csr_matrix(parcels.mean(dtype="float", axis=0))
-            ref_sim = np.zeros(n_parcels)
-            for pp in range(n_parcels):
-                ref_sim[pp] = ref_cluster[parcels[pp, :]].mean(dtype="float")
-            tmp = states[states == ss]
-            tmp[ref_sim < threshold_sim] = n_states
-            states[states == ss] = tmp
+        
+    states = _trim_states(onehot, states, n_states, verbose, threshold_sim)    
     return states
 
+
+def _trim_states(onehot, states, n_states, verbose, threshold_sim):
+    """Trim the states clusters to exclude outliers
+    """
+    for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
+        [ix, iy, val] = find(onehot[states == ss, :])
+        size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()    
+        ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
+        avg_stab = np.bincount(ix, weights=ref_cluster[0,iy].flatten())
+        avg_stab = np.divide(avg_stab, size_onehot)
+        tmp = states[states == ss]
+        tmp[avg_stab < threshold_sim] = n_states
+        states[states == ss] = tmp
+    return states
 
 def _stab_maps(onehot, states, n_replications, n_states):
     """Generate stability maps associated with different states"""
@@ -349,10 +321,6 @@ class dypac(BaseDecomposition):
         Rough estimator of the amount of memory used by caching. Higher value
         means more memory for caching.
 
-    n_jobs: integer, optional
-        The number of CPUs to use to do the computation. -1 means
-        'all CPUs', -2 'all CPUs but one', and so on.
-
     verbose: integer, optional
         Indicate the level of verbosity. By default, print progress.
 
@@ -390,7 +358,6 @@ class dypac(BaseDecomposition):
         mask_args=None,
         memory=Memory(cachedir=None),
         memory_level=0,
-        n_jobs=1,
         verbose=1,
     ):
         # All those settings are taken from nilearn BaseDecomposition
@@ -409,7 +376,6 @@ class dypac(BaseDecomposition):
         self.mask_args = mask_args
         self.memory = memory
         self.memory_level = max(0, memory_level + 1)
-        self.n_jobs = n_jobs
         self.verbose = verbose
 
         # Those settings are specific to parcel aggregation
@@ -495,7 +461,6 @@ class dypac(BaseDecomposition):
             threshold_sim=self.threshold_sim,
             n_batch=self.n_batch,
             n_init=self.n_init,
-            n_jobs=self.n_jobs,
             verbose=self.verbose,
         )
 
@@ -549,7 +514,6 @@ class dypac(BaseDecomposition):
             n_replications=self.n_replications,
             max_iter=self.max_iter,
             n_init=self.n_init,
-            n_jobs=self.n_jobs,
             desc="Replicating clusters in data #{0}".format(ind),
             verbose=self.verbose,
         )
