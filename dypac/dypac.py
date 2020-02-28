@@ -72,55 +72,72 @@ def _start_window(n_time, n_replications, subsample_size):
     list_start = np.floor(list_start)
     list_start = np.unique(list_start)
     return list_start
-
-
-def _kmeans_init(onehot, init, n_clusters):
-    if init is "random":
-        n_replications = onehot.shape[0]
-        idx = np.random.choice(n_replications, n_clusters, replace=False)
-        centroids = np.array(onehot[idx, :].todense())
-    else:
-        raise ValueError("_kmeans_sparse currently supports only random initialization")
-    return centroids  
      
-    
-def _kmeans_sparse( onehot, n_clusters, init="random", max_iter=30, verbose=False):
-    """ Implementation of k-means clustering for sparse and boolean data
+
+def _propagate_part(part_batch, part_cons, n_batch, index_cons):
+    """ Combine partitions across batches with the within-batch partitions
     """
-    [n_replications, nv] = onehot.shape
-    centroids = _kmeans_init(onehot, init, n_clusters)
-    [ix, iy, val] = find(onehot)
-    size_onehot = onehot.sum(axis=1)    
-    for n_iter in tqdm(range(max_iter),disable=not verbose):
-        # Assign each parcel to the centroid with maximal average stability in that centroid
-        avg_stab = np.zeros([n_replications, n_clusters])
-        for cc in range(n_clusters):
-            avg_stab[:, cc] = np.bincount(ix, weights=centroids[cc, iy].flatten())
-        part = np.argmax(avg_stab, axis=1)
-        # Now recompute the centroids
-        centroids = np.zeros([n_clusters, nv])
-        for cc in range(n_clusters):
-            if any(part == cc):
-                centroids[cc, :] = onehot[part == cc, :].mean(axis=0)
-            else:
-                # This cluster is dead
-                # use a random onehot as centroid
-                centroids[cc, :] = np.array(onehot[np.random.randint(n_replications, size=1), :].todense())
+    part = np.zeros(part_batch.shape, dtype=np.int32)
+    for bb in range(n_batch):
+        range_batch = np.unique(np.floor(np.arange(bb, part_batch.shape[0], n_batch)).astype("int"))
+        range_cons = range(index_cons[bb], index_cons[bb+1])
+        sub_batch = part_batch[range_batch]
+        sub_cons = part_cons[range_cons]
+        part[range_batch] = sub_cons[sub_batch]
+    
     return part
-        
-                
+
+            
+def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_init=10, verbose=False, threshold_sim=0.3):
+    """ Iteration of consensus clustering over batches of onehot
+    """
+    
+    # Iterate across all batches
+    part_batch = np.zeros([onehot.shape[0]], dtype="int")
+    for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
+        index_batch = np.unique(np.floor(np.arange(bb, onehot.shape[0], n_batch)).astype("int"))
+        centroids, part, inert = k_means(
+            onehot[index_batch, :],
+            n_clusters=n_clusters,
+            init="k-means++",
+            max_iter=max_iter,
+            n_init=n_init,
+        )
+        if bb == 0:
+            curr_pos = centroids.shape[0]
+            index_cons = np.array([0, curr_pos])
+            stab_batch = csr_matrix(centroids)
+        else:
+            curr_pos = curr_pos + centroids.shape[0]
+            index_cons = np.hstack([index_cons, curr_pos])
+            stab_batch = vstack([stab_batch, csr_matrix(centroids)])
+        part_batch[index_batch] = part 
+            
+    # Now apply consensus clustering on the binarized centroids
+    cent, part_cons, inert = k_means(
+            stab_batch,
+            n_clusters=n_clusters,
+            init="k-means++",
+            max_iter=max_iter,
+            n_init=n_init,
+        )
+    
+    # Finally propagate the batch level partition to the original onehots
+    part = _propagate_part(part_batch, part_cons, n_batch, index_cons)
+            
+    return part
+                                                 
+    
 def _replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init, n_jobs, verbose, embedding=np.array([]), normalize=False
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, verbose, embedding=np.array([]), desc="", normalize=False
 ):
     """ Replicate a clustering on random subsamples
     """
     part = np.zeros([n_replications, y.shape[0]], dtype="int")
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
     range_replication = range(n_replications)
-    if verbose:
-        range_replication = tqdm(range_replication)
-
-    for rr in range_replication:
+    
+    for rr in tqdm(range_replication, disable=not verbose, desc=desc):
         samp = _select_subsample(y, subsample_size, list_start[rr])
         if normalize:
             samp = scale(samp, axis=1)
@@ -132,34 +149,51 @@ def _replicate_clusters(
             init="k-means++",
             max_iter=max_iter,
             n_init=n_init,
-            n_jobs=n_jobs,
         )
     return _part2onehot(part, n_clusters)
 
 
-def _find_states(onehot, n_states, max_iter, threshold_sim, verbose):
+def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, verbose=False):
     """Find dynamic states based on the similarity of clusters over time"""
-    states = _kmeans_sparse(
-        onehot,
-        n_clusters=n_states,
-        init="random",
-        max_iter=max_iter,
-        verbose=verbose
-    )
-
-    for ss in range(n_states):
-        if np.any(states == ss):
-            parcels = onehot[states == ss, :]
-            n_parcels = np.sum(states == ss)
-            ref_cluster = csr_matrix(parcels.mean(dtype="float", axis=0))
-            ref_sim = np.zeros(n_parcels)
-            for pp in range(n_parcels):
-                ref_sim[pp] = ref_cluster[parcels[pp, :]].mean(dtype="float")
-            tmp = states[states == ss]
-            tmp[ref_sim < threshold_sim] = n_states
-            states[states == ss] = tmp
+    if n_batch > 1:
+        states = _kmeans_batch(
+            onehot,
+            n_clusters=n_states,
+            init="random",
+            max_iter=max_iter,
+            threshold_sim=threshold_sim,
+            n_batch=n_batch,
+            n_init=n_init,
+            verbose=verbose,
+        )
+    else: 
+        if verbose:
+            print("Consensus clustering.")
+        cent, states, inert = k_means(
+            onehot,
+            n_clusters=n_states,
+            init="k-means++",
+            max_iter=max_iter,
+            n_init=n_init,
+        )
+        
+    states = _trim_states(onehot, states, n_states, verbose, threshold_sim)    
     return states
 
+
+def _trim_states(onehot, states, n_states, verbose, threshold_sim):
+    """Trim the states clusters to exclude outliers
+    """
+    for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
+        [ix, iy, val] = find(onehot[states == ss, :])
+        size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()    
+        ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
+        avg_stab = np.bincount(ix, weights=ref_cluster[0,iy].flatten())
+        avg_stab = np.divide(avg_stab, size_onehot)
+        tmp = states[states == ss]
+        tmp[avg_stab < threshold_sim] = n_states
+        states[states == ss] = tmp
+    return states
 
 def _stab_maps(onehot, states, n_replications, n_states):
     """Generate stability maps associated with different states"""
@@ -196,17 +230,24 @@ class dypac(BaseDecomposition):
     n_clusters: int
         Number of clusters to extract per time window
 
+    n_states: int
+        Number of expected dynamic states
+        
+    n_replications: int
+        Number of replications of cluster analysis in each fMRI run
+
+    n_batch: int
+        Number of batches to run through consensus clustering. 
+        If n_batch<=1, consensus clustering will be applied 
+        to all replications in one pass. Processing with batch will 
+        reduce dramatically the compute time, but will change slightly 
+        the results.
+
     n_init: int
         Number of initializations for k-means
 
     subsample_size: int
         Number of time points in a subsample
-
-    n_states: int
-        Number of expected states per cluster
-
-    n_replications: int
-        Number of replications of cluster analysis in each fMRI run
 
     max_iter: int
         Max number of iterations for k-means
@@ -280,10 +321,6 @@ class dypac(BaseDecomposition):
         Rough estimator of the amount of memory used by caching. Higher value
         means more memory for caching.
 
-    n_jobs: integer, optional
-        The number of CPUs to use to do the computation. -1 means
-        'all CPUs', -2 'all CPUs but one', and so on.
-
     verbose: integer, optional
         Indicate the level of verbosity. By default, print progress.
 
@@ -299,11 +336,12 @@ class dypac(BaseDecomposition):
     def __init__(
         self,
         n_clusters=10,
+        n_states=3,
+        n_replications=40,
+        n_batch=1,
         n_init=30,
         n_init_aggregation=100,
         subsample_size=30,
-        n_states=3,
-        n_replications=40,
         max_iter=30,
         threshold_sim=0.3,
         random_state=None,
@@ -320,7 +358,6 @@ class dypac(BaseDecomposition):
         mask_args=None,
         memory=Memory(cachedir=None),
         memory_level=0,
-        n_jobs=1,
         verbose=1,
     ):
         # All those settings are taken from nilearn BaseDecomposition
@@ -339,17 +376,16 @@ class dypac(BaseDecomposition):
         self.mask_args = mask_args
         self.memory = memory
         self.memory_level = max(0, memory_level + 1)
-        self.n_jobs = n_jobs
         self.verbose = verbose
 
         # Those settings are specific to parcel aggregation
         self.n_clusters = n_clusters
+        self.n_states = n_states
+        self.n_batch = n_batch
+        self.n_replications = n_replications
         self.n_init = n_init
         self.n_init_aggregation = n_init_aggregation
         self.subsample_size = subsample_size
-        self.n_clusters = n_clusters
-        self.n_states = n_states
-        self.n_replications = n_replications
         self.max_iter = max_iter
         self.threshold_sim = threshold_sim
 
@@ -418,21 +454,17 @@ class dypac(BaseDecomposition):
         onehot = self._mask_and_reduce(imgs, confounds)
 
         # find the states
-        if self.verbose:
-            print("[{0}] Finding parcellation states".format(self.__class__.__name__))
         states = _find_states(
             onehot,
             n_states=self.n_states * self.n_clusters,
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
+            n_batch=self.n_batch,
+            n_init=self.n_init,
             verbose=self.verbose,
         )
 
         # Generate the stability maps
-        if self.verbose:
-            print(
-                "[{0}] Generating state stability maps".format(self.__class__.__name__)
-            )
         stab_maps, dwell_time = _stab_maps(
             onehot, states, self.n_replications, self.n_states * self.n_clusters
         )
@@ -459,21 +491,15 @@ class dypac(BaseDecomposition):
 
         onehot = csr_matrix([0,])
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
-            if self.verbose:
-                print(
-                    "[{0}] Replicating clusters on {1}".format(
-                        self.__class__.__name__, img
-                    )
-                )
             if ind > 0:
                 onehot = vstack(
-                    [onehot, self._mask_and_cluster_single(img=img, confound=confound)]
+                    [onehot, self._mask_and_cluster_single(img=img, confound=confound, ind=ind)]
                 )
             else:
-                onehot = self._mask_and_cluster_single(img=img, confound=confound)
+                onehot = self._mask_and_cluster_single(img=img, confound=confound, ind=ind)
         return onehot
 
-    def _mask_and_cluster_single(self, img, confound):
+    def _mask_and_cluster_single(self, img, confound, ind):
         """Utility function for _mask_and_reduce"""
         this_data = self.masker_.transform(img, confound)
         # Now get rid of the img as fast as possible, to free a
@@ -488,7 +514,7 @@ class dypac(BaseDecomposition):
             n_replications=self.n_replications,
             max_iter=self.max_iter,
             n_init=self.n_init,
-            n_jobs=self.n_jobs,
+            desc="Replicating clusters in data #{0}".format(ind),
             verbose=self.verbose,
         )
         return onehot
