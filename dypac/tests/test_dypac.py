@@ -3,6 +3,8 @@ import dypac
 import pytest
 import pickle
 
+from scipy.sparse import csr_matrix, vstack, find
+
 
 def test_part2onehot():
     test = dict()
@@ -287,3 +289,121 @@ def test8_select_subsample():
     subsample = np.empty((0, 0))
 
     assert np.array_equal(dypac_sample, subsample)
+
+
+def test_stab_maps():
+    val = [[0, 1], [4, 0], [5, 0]]
+    states = np.array([1, 1, 2])
+    n_replications = 2
+    n_states = 2
+    onehot = csr_matrix((val), dtype="bool")
+
+    dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+
+    stab_maps = csr_matrix([[0.5, 0], [0.5, 0]], dtype="float64")
+
+    assert np.array_equal(
+        dypac_stab_maps.toarray(), stab_maps.toarray()
+    ) and np.array_equal(dypac_stab_maps.indices, stab_maps.indices)
+
+
+def test2_stab_maps():
+    val = [[0, 1], [100, 0]]
+    states = np.array([1, 1, 2])
+    n_replications = 2
+    n_states = 2
+    onehot = csr_matrix((val), dtype="bool")
+
+    dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+
+    stab_maps = csr_matrix([[0.5, 0], [0.5, 0]], dtype="float64")
+
+    assert np.array_equal(
+        dypac_stab_maps.toarray(), stab_maps.toarray()
+    ) and np.array_equal(dypac_stab_maps.indices, stab_maps.indices)
+
+
+def test3_stab_maps():
+    val = [[0, 1], [100, 0], [-1, 0]]
+    states = np.array([1, 2, 4])
+    n_replications = 2
+    n_states = 2
+    onehot = csr_matrix((val), dtype="bool")
+
+    dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+    stab_maps = csr_matrix([[0, 0], [1, 0]], dtype="float64")
+
+    assert np.array_equal(
+        dypac_stab_maps.toarray(), stab_maps.toarray()
+    ) and np.array_equal(dypac_stab_maps.indices, stab_maps.indices)
+
+
+def test4_stab_maps():
+    val = [[0, 1], [5, 0]]
+    states = np.array([])
+    n_replications = 2
+    n_states = 2
+    onehot = csr_matrix((val), dtype="bool")
+
+    dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+    stab_maps = csr_matrix([[0, 0], [0, 0]], dtype="float64")
+
+    assert np.array_equal(
+        dypac_stab_maps.toarray(), stab_maps.toarray()
+    ) and np.array_equal(dypac_stab_maps.indices, stab_maps.indices)
+
+
+def test5_stab_maps():
+    val = [[0, 1], [5, 0]]
+    states = np.array([1, 2, 7])
+    n_replications = -1
+    n_states = 2
+    onehot = csr_matrix((val), dtype="bool")
+
+    dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+    stab_maps = csr_matrix([[0, 0], [0, 1]], dtype="float64")
+
+    assert np.array_equal(
+        dypac_stab_maps.toarray(), stab_maps.toarray()
+    ) and np.array_equal(dypac_stab_maps.indices, stab_maps.indices)
+
+
+def test6_stab_maps():
+    val = [[0, 1], [5, 0]]
+    states = np.array([1, 2, 7])
+    n_replications = 2
+    n_states = -1
+    onehot = csr_matrix((val), dtype="bool")
+
+    with pytest.raises(ValueError, match="negative dimensions are not allowed"):
+        dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+
+
+def test7_stab_maps():
+    val = [[0, 1, 0, 9, 3,], [5, 0, 8, 3, 1], [4, 11, 2, 4, 5]]
+    states = np.array([1, 2, 10])
+    n_replications = 2
+    n_states = 2
+    onehot = csr_matrix((val), dtype="bool")
+
+    stab_maps = csr_matrix([[0, 0], [1, 0], [0, 0], [1, 0], [1, 0]], dtype="float64")
+
+    # with pytest.raises(ValueError, match="negative dimensions are not allowed"):
+    dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+
+    assert np.array_equal(
+        dypac_stab_maps.toarray(), stab_maps.toarray()
+    ) and np.array_equal(dypac_stab_maps.indices, stab_maps.indices)
+
+
+def test8_stab_maps():
+    val = [[]]
+    states = np.array([1, 2, 10])
+    n_replications = 2
+    n_states = 2
+    onehot = csr_matrix((val), dtype="bool")
+
+    dypac_stab_maps = dypac._stab_maps(onehot, states, n_replications, n_states)[0]
+
+    if dypac_stab_maps.toarray().size == 0:
+        assert True
