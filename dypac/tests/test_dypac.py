@@ -407,3 +407,144 @@ def test8_stab_maps():
 
     if dypac_stab_maps.toarray().size == 0:
         assert True
+
+
+def test_propagate_part():
+
+    n_batch = 2
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+    part = np.array([2, 0, 1, 1, 0, 2, 2, 2, 1, 1])
+
+    assert np.array_equal(part, dypac_part)
+
+
+def test2_propagate_part():
+
+    n_batch = 2
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+    part = np.array([2, 0, 1, 1, 0, 2, 2, 2, 1, 1])
+
+    assert np.array_equal(part, dypac_part)
+
+
+def test3_propagate_part():
+
+    n_batch = 1
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+    part = np.array([2, 1, 1, 0, 0, 2, 2, 2, 1, 0])
+
+    print(np.array_equal(part, dypac_part))
+
+
+def test4_propagate_part():
+
+    n_batch = 3
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+
+    with pytest.raises(IndexError, match="list index out of range"):
+        dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+
+
+def test5_propagate_part():
+
+    n_batch = -1
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+
+    part = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+    assert np.array_equal(part, dypac_part)
+
+
+def test6_propagate_part():
+
+    n_batch = 0
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+
+    part = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+    assert np.array_equal(part, dypac_part)
+
+
+def test7_propagate_part():
+
+    n_batch = 2
+    part_batch = np.array([-1, 1, 1, 2, 2, 0, 0, 2, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+
+    part = np.array([0, 0, 1, 1, 0, 2, 2, 1, 1, 1])
+
+    assert np.array_equal(part, dypac_part)
+
+
+def test8_propagate_part():
+
+    n_batch = 2
+    part_batch = np.array([0])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+
+    part = np.array([2])
+    assert np.array_equal(part, dypac_part)
+
+
+def test9_propagate_part():
+
+    n_batch = 2
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1, 3, 1, 2, 8])
+    index_batch = [0, 5, 10]
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+    part = np.array([2, 0, 1, 1, 0, 2, 2, 2, 1, 1])
+    assert np.array_equal(part, dypac_part)
+
+
+def test10_propagate_part():
+    n_batch = 2
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = []
+    index_cons = [0, 3, 6]
+    dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
+    part = np.array([2, 0, 1, 1, 0, 2, 2, 2, 1, 1])
+
+    assert np.array_equal(part, dypac_part)
+
+
+def test11_propagate_part():
+    n_batch = 2
+    part_batch = np.array([0, 1, 1, 2, 2, 0, 0, 0, 1, 2])
+    part_cons = np.array([2, 1, 0, 2, 0, 1])
+    index_batch = [0, 5, 10]
+    index_cons = []
+
+    with pytest.raises(IndexError, match="list index out of range"):
+        dypac_part = dypac._propagate_part(part_batch, part_cons, n_batch, index_cons)
