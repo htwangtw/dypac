@@ -72,7 +72,7 @@ def _start_window(n_time, n_replications, subsample_size):
     list_start = np.floor(list_start)
     list_start = np.unique(list_start)
     return list_start
-     
+
 
 def _propagate_part(part_batch, part_cons, n_batch, index_cons):
     """ Combine partitions across batches with the within-batch partitions
@@ -84,14 +84,14 @@ def _propagate_part(part_batch, part_cons, n_batch, index_cons):
         sub_batch = part_batch[range_batch]
         sub_cons = part_cons[range_cons]
         part[range_batch] = sub_cons[sub_batch]
-    
+
     return part
 
-            
+
 def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_init=10, verbose=False, threshold_sim=0.3):
     """ Iteration of consensus clustering over batches of onehot
     """
-    
+
     # Iterate across all batches
     part_batch = np.zeros([onehot.shape[0]], dtype="int")
     for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
@@ -111,8 +111,8 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_
             curr_pos = curr_pos + centroids.shape[0]
             index_cons = np.hstack([index_cons, curr_pos])
             stab_batch = vstack([stab_batch, csr_matrix(centroids)])
-        part_batch[index_batch] = part 
-            
+        part_batch[index_batch] = part
+
     # Now apply consensus clustering on the binarized centroids
     cent, part_cons, inert = k_means(
             stab_batch,
@@ -121,13 +121,13 @@ def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_
             max_iter=max_iter,
             n_init=n_init,
         )
-    
+
     # Finally propagate the batch level partition to the original onehots
     part = _propagate_part(part_batch, part_cons, n_batch, index_cons)
-            
+
     return part
-                                                 
-    
+
+
 def _replicate_clusters(
     y, subsample_size, n_clusters, n_replications, max_iter, n_init, verbose, embedding=np.array([]), desc="", normalize=False
 ):
@@ -136,7 +136,7 @@ def _replicate_clusters(
     part = np.zeros([n_replications, y.shape[0]], dtype="int")
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
     range_replication = range(n_replications)
-    
+
     for rr in tqdm(range_replication, disable=not verbose, desc=desc):
         samp = _select_subsample(y, subsample_size, list_start[rr])
         if normalize:
@@ -166,7 +166,7 @@ def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0,
             n_init=n_init,
             verbose=verbose,
         )
-    else: 
+    else:
         if verbose:
             print("Consensus clustering.")
         cent, states, inert = k_means(
@@ -176,8 +176,8 @@ def _find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0,
             max_iter=max_iter,
             n_init=n_init,
         )
-        
-    states = _trim_states(onehot, states, n_states, verbose, threshold_sim)    
+
+    states = _trim_states(onehot, states, n_states, verbose, threshold_sim)
     return states
 
 
@@ -186,7 +186,7 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
     """
     for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
         [ix, iy, val] = find(onehot[states == ss, :])
-        size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()    
+        size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()
         ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
         avg_stab = np.bincount(ix, weights=ref_cluster[0,iy].flatten())
         avg_stab = np.divide(avg_stab, size_onehot)
@@ -232,15 +232,15 @@ class dypac(BaseDecomposition):
 
     n_states: int
         Number of expected dynamic states
-        
+
     n_replications: int
         Number of replications of cluster analysis in each fMRI run
 
     n_batch: int
-        Number of batches to run through consensus clustering. 
-        If n_batch<=1, consensus clustering will be applied 
-        to all replications in one pass. Processing with batch will 
-        reduce dramatically the compute time, but will change slightly 
+        Number of batches to run through consensus clustering.
+        If n_batch<=1, consensus clustering will be applied
+        to all replications in one pass. Processing with batch will
+        reduce dramatically the compute time, but will change slightly
         the results.
 
     n_init: int
@@ -456,7 +456,7 @@ class dypac(BaseDecomposition):
         # find the states
         states = _find_states(
             onehot,
-            n_states=self.n_states * self.n_clusters,
+            n_states=self.n_states,
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
             n_batch=self.n_batch,
