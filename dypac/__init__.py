@@ -2,5 +2,5 @@
 Dynamic Parcel Aggregation with Clustering (dypac)
 """
 from .dypac import dypac
-import .bascpp
-__all__ = ['dypac', 'bascpp']
+from .bascpp import replicate_clusters, find_states, stab_maps
+__all__ = ['dypac', 'replicate_clusters', 'find_states', 'stab_maps']
