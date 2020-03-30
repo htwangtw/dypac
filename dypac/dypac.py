@@ -9,20 +9,17 @@ import itertools
 
 from tqdm import tqdm
 
-from scipy.stats import pearsonr
 from scipy.sparse import csr_matrix, vstack, find
 import numpy as np
 
-from sklearn.cluster import k_means
+import ./bascpp as bpp
 from sklearn.utils import check_random_state
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import scale
 
 from nilearn import EXPAND_PATH_WILDCARDS
-from nilearn._utils.compat import Memory, Parallel, delayed, _basestring
 from nilearn._utils.niimg import _safe_get_data
 from nilearn._utils.niimg_conversions import _resolve_globbing
-from nilearn._utils.cache_mixin import CacheMixin, cache
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 from nilearn.image import new_img_like
