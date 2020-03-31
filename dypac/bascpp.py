@@ -67,7 +67,7 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
         [ix, iy, val] = find(onehot[states == ss, :])
         size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()
         ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
-        avg_stab = np.bincount(ix, weights=ref_cluster[0, iy].flatten())
+        avg_stab = np.bincount(ix, weights=ref_cluster[0,iy].flatten())
         avg_stab = np.divide(avg_stab, size_onehot)
         tmp = states[states == ss]
         tmp[avg_stab < threshold_sim] = n_states
@@ -76,16 +76,7 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
 
 
 def replicate_clusters(
-    y,
-    subsample_size,
-    n_clusters,
-    n_replications,
-    max_iter,
-    n_init,
-    verbose,
-    embedding=np.array([]),
-    desc="",
-    normalize=False,
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, random_state=None, verbose=False, embedding=np.array([]), desc="", normalize=False
 ):
     """ Replicate a clustering on random subsamples
 
@@ -138,25 +129,23 @@ def replicate_clusters(
             init="k-means++",
             max_iter=max_iter,
             n_init=n_init,
+            random_state=random_state,
         )
     return _part2onehot(part, n_clusters)
 
 
-def find_states(
-    onehot,
-    n_states=10,
-    max_iter=30,
-    threshold_sim=0.3,
-    n_batch=0,
-    n_init=10,
-    verbose=False,
-):
+def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, random_state=None, verbose=False):
     """Find dynamic states based on the similarity of clusters over time
     """
     if verbose:
         print("Consensus clustering.")
     cent, states, inert = k_means(
-        onehot, n_clusters=n_states, init="k-means++", max_iter=max_iter, n_init=n_init,
+        onehot,
+        n_clusters=n_states,
+        init="k-means++",
+        max_iter=max_iter,
+        random_state=None,
+        n_init=n_init,
     )
     states = _trim_states(onehot, states, n_states, verbose, threshold_sim)
     return states
