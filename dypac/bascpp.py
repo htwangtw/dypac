@@ -60,60 +60,6 @@ def _start_window(n_time, n_replications, subsample_size):
     return list_start
 
 
-def _propagate_part(part_batch, part_cons, n_batch, index_cons):
-    """ Combine partitions across batches with the within-batch partitions
-    """
-    part = np.zeros(part_batch.shape, dtype=np.int32)
-    for bb in range(n_batch):
-        range_batch = np.unique(np.floor(np.arange(bb, part_batch.shape[0], n_batch)).astype("int"))
-        range_cons = range(index_cons[bb], index_cons[bb+1])
-        sub_batch = part_batch[range_batch]
-        sub_cons = part_cons[range_cons]
-        part[range_batch] = sub_cons[sub_batch]
-
-    return part
-
-
-def _kmeans_batch( onehot, n_clusters, init="random", max_iter=30, n_batch=2, n_init=10, verbose=False, threshold_sim=0.3):
-    """ Iteration of consensus clustering over batches of onehot
-    """
-
-    # Iterate across all batches
-    part_batch = np.zeros([onehot.shape[0]], dtype="int")
-    for bb in tqdm(range(n_batch), disable=not verbose, desc="Intra-batch consensus"):
-        index_batch = np.unique(np.floor(np.arange(bb, onehot.shape[0], n_batch)).astype("int"))
-        centroids, part, inert = k_means(
-            onehot[index_batch, :],
-            n_clusters=n_clusters,
-            init="k-means++",
-            max_iter=max_iter,
-            n_init=n_init,
-        )
-        if bb == 0:
-            curr_pos = centroids.shape[0]
-            index_cons = np.array([0, curr_pos])
-            stab_batch = csr_matrix(centroids)
-        else:
-            curr_pos = curr_pos + centroids.shape[0]
-            index_cons = np.hstack([index_cons, curr_pos])
-            stab_batch = vstack([stab_batch, csr_matrix(centroids)])
-        part_batch[index_batch] = part
-
-    # Now apply consensus clustering on the binarized centroids
-    cent, part_cons, inert = k_means(
-            stab_batch,
-            n_clusters=n_clusters,
-            init="k-means++",
-            max_iter=max_iter,
-            n_init=n_init,
-        )
-
-    # Finally propagate the batch level partition to the original onehots
-    part = _propagate_part(part_batch, part_cons, n_batch, index_cons)
-
-    return part
-
-
 def _trim_states(onehot, states, n_states, verbose, threshold_sim):
     """Trim the states clusters to exclude outliers
     """
@@ -121,7 +67,7 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
         [ix, iy, val] = find(onehot[states == ss, :])
         size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()
         ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
-        avg_stab = np.bincount(ix, weights=ref_cluster[0,iy].flatten())
+        avg_stab = np.bincount(ix, weights=ref_cluster[0, iy].flatten())
         avg_stab = np.divide(avg_stab, size_onehot)
         tmp = states[states == ss]
         tmp[avg_stab < threshold_sim] = n_states
@@ -130,7 +76,16 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
 
 
 def replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init, verbose, embedding=np.array([]), desc="", normalize=False
+    y,
+    subsample_size,
+    n_clusters,
+    n_replications,
+    max_iter,
+    n_init,
+    verbose,
+    embedding=np.array([]),
+    desc="",
+    normalize=False,
 ):
     """ Replicate a clustering on random subsamples
 
@@ -147,6 +102,25 @@ def replicate_clusters(
 
     max_iter: int
         Max number of iterations for the k-means algorithm
+
+    verbose: boolean
+        Turn on/off verbose
+
+    embedding: array
+        if present, the embedding array will be appended to samp for each sample.
+        For example, embedding can be a set of spatial coordinates,
+        to encourage spatial proximity in the clusters.
+
+    desc: string
+        message to insert in verbose
+
+    normalize: boolean
+        turn on/off scaling of each sample to zero mean and unit variance
+
+    Returts
+    -------
+    onehot: boolean, sparse array
+        onehot representation of clusters, stacked over all replications.
     """
     part = np.zeros([n_replications, y.shape[0]], dtype="int")
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
@@ -168,37 +142,29 @@ def replicate_clusters(
     return _part2onehot(part, n_clusters)
 
 
-def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, verbose=False):
+def find_states(
+    onehot,
+    n_states=10,
+    max_iter=30,
+    threshold_sim=0.3,
+    n_batch=0,
+    n_init=10,
+    verbose=False,
+):
     """Find dynamic states based on the similarity of clusters over time
     """
-    if n_batch > 1:
-        states = _kmeans_batch(
-            onehot,
-            n_clusters=n_states,
-            init="random",
-            max_iter=max_iter,
-            threshold_sim=threshold_sim,
-            n_batch=n_batch,
-            n_init=n_init,
-            verbose=verbose,
-        )
-    else:
-        if verbose:
-            print("Consensus clustering.")
-        cent, states, inert = k_means(
-            onehot,
-            n_clusters=n_states,
-            init="k-means++",
-            max_iter=max_iter,
-            n_init=n_init,
-        )
-
+    if verbose:
+        print("Consensus clustering.")
+    cent, states, inert = k_means(
+        onehot, n_clusters=n_states, init="k-means++", max_iter=max_iter, n_init=n_init,
+    )
     states = _trim_states(onehot, states, n_states, verbose, threshold_sim)
     return states
 
 
 def stab_maps(onehot, states, n_replications, n_states):
-    """Generate stability maps associated with different states"""
+    """Generate stability maps associated with different states
+    """
 
     dwell_time = np.zeros(n_states)
     val = np.array([])
