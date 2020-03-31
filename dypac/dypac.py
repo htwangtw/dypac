@@ -271,7 +271,7 @@ class dypac(BaseDecomposition):
 
         # Generate the stability maps
         stab_maps, dwell_time = bpp.stab_maps(
-            onehot, states, self.n_replications, self.n_states * self.n_clusters
+            onehot, states, self.n_replications, self.n_states
         )
 
         # Return components
