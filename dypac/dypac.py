@@ -1,4 +1,4 @@
-""" Dynamic Parcel Aggregation with Clustering (dypac)."""
+"""Dynamic Parcel Aggregation with Clustering (dypac)."""
 
 # Authors: Pierre Bellec, Amal Boukhdir
 # License: BSD 3 clause
@@ -274,7 +274,6 @@ class dypac(BaseDecomposition):
 
     def _mask_and_reduce_batch(self, imgs, confounds=None):
         """Iterate dypac on batches of files."""
-
         for bb in range(self.n_batch):
             slice_batch = slice(bb, len(imgs), self.n_batch)
             if self.verbose:

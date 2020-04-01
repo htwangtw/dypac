@@ -15,7 +15,7 @@ from sklearn.preprocessing import scale
 
 
 def _select_subsample(y, subsample_size, start=None):
-    """ Select a random subsample in a data array."""
+    """Select a random subsample in a data array."""
     n_samples = y.shape[1]
     subsample_size = np.min([subsample_size, n_samples])
     max_start = n_samples - subsample_size
@@ -29,8 +29,8 @@ def _select_subsample(y, subsample_size, start=None):
 
 
 def _part2onehot(part, n_clusters=0):
-    """ Convert a series of partition (one per row) with integer clusters into
-        a series of one-hot encoding vectors (one per row and cluster).
+    """Convert a series of partition (one per row) with integer clusters into
+       a series of one-hot encoding vectors (one per row and cluster).
     """
     if n_clusters == 0:
         n_clusters = np.max(part) + 1
@@ -49,7 +49,7 @@ def _part2onehot(part, n_clusters=0):
 
 
 def _start_window(n_time, n_replications, subsample_size):
-    """ Get a list of the starting points of sliding windows."""
+    """Get a list of the starting points of sliding windows."""
     max_replications = n_time - subsample_size + 1
     n_replications = np.min([max_replications, n_replications])
     list_start = np.linspace(0, max_replications, n_replications)
@@ -149,7 +149,6 @@ def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, 
 
 def stab_maps(onehot, states, n_replications, n_states, weights=None):
     """Generate stability maps associated with different states."""
-
     dwell_time = np.zeros(n_states)
     val = np.array([])
     col_ind = np.array([])
