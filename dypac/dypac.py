@@ -293,7 +293,7 @@ class dypac(BaseDecomposition):
             init="k-means++",
             max_iter=self.max_iter,
             random_state=self.random_state,
-            n_init=self.n_init,
+            n_init=self.n_init_aggregation,
         )
 
         # average stability maps and dwell times across consensus states
@@ -342,7 +342,7 @@ class dypac(BaseDecomposition):
             threshold_sim=self.threshold_sim,
             n_batch=self.n_batch,
             random_state=self.random_state,
-            n_init=self.n_init,
+            n_init=self.n_init_aggregation,
             verbose=self.verbose,
         )
 
