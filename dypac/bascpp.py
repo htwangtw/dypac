@@ -144,14 +144,14 @@ def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, 
         n_clusters=n_states,
         init="k-means++",
         max_iter=max_iter,
-        random_state=None,
+        random_state=random_state,
         n_init=n_init,
     )
     states = _trim_states(onehot, states, n_states, verbose, threshold_sim)
     return states
 
 
-def stab_maps(onehot, states, n_replications, n_states):
+def stab_maps(onehot, states, n_replications, n_states, weights=None):
     """Generate stability maps associated with different states
     """
 
@@ -161,19 +161,22 @@ def stab_maps(onehot, states, n_replications, n_states):
     row_ind = np.array([])
 
     for ss in range(0, n_states):
-        dwell_time[ss] = np.sum(states == ss) / n_replications
+        if np.any(weights == None):
+            dwell_time[ss] = np.sum(states == ss) / n_replications
+        else:
+            dwell_time[ss] = np.mean(weights[states == ss])
         if np.any(states == ss):
             stab_map = onehot[states == ss, :].mean(dtype="float", axis=0)
             mask = stab_map > 0
 
-            col_ind = np.append(col_ind, np.repeat(ss, np.sum(mask)))
-            row_ind = np.append(row_ind, np.nonzero(mask)[1])
+            row_ind = np.append(row_ind, np.repeat(ss, np.sum(mask)))
+            col_ind = np.append(col_ind, np.nonzero(mask)[1])
             val = np.append(val, stab_map[mask])
-    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[onehot.shape[1], n_states])
+    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[n_states, onehot.shape[1]])
 
     # Re-order stab maps by descending dwell time
     indsort = np.argsort(-dwell_time)
-    stab_maps = stab_maps[:, indsort]
+    stab_maps = stab_maps[indsort, :]
     dwell_time = dwell_time[indsort]
 
     return stab_maps, dwell_time

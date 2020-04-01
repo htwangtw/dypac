@@ -5,12 +5,12 @@
 # License: BSD 3 clause
 import glob
 import itertools
+import warnings
 
-import bascpp as bpp
 from scipy.sparse import csr_matrix, vstack
 import numpy as np
 
-#from .bascpp import replicate_clusters, find_states, stab_maps
+from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
 from sklearn.linear_model import LinearRegression
 
@@ -19,6 +19,8 @@ from nilearn._utils.compat import Memory, Parallel, _basestring
 from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
+
+import bascpp as bpp
 
 
 class dypac(BaseDecomposition):
@@ -219,7 +221,6 @@ class dypac(BaseDecomposition):
 
         """
         # Base fit for decomposition estimators : compute the embedded masker
-
         if isinstance(imgs, _basestring):
             if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
                 imgs = _resolve_globbing(imgs)
@@ -247,18 +248,62 @@ class dypac(BaseDecomposition):
             self.masker_.fit()
         self.mask_img_ = self.masker_.mask_img_
 
+        # if no confounds have been specified, match length of imgs
+        if confounds is None:
+            confounds = list(itertools.repeat(confounds, len(imgs)))
+
         # Control random number generation
         self.random_state = check_random_state(self.random_state)
 
+        # Check that number of batches is reasonable
+        if self.n_batch > len(imgs):
+            warnings.warn("{0} batches were requested, but only {1} datasets "
+                          "avaible. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
+            self.n_batch = len(imgs)
+
         # mask_and_reduce step
-        if self.verbose:
-            print("[{0}] Loading data".format(self.__class__.__name__))
-        stab_maps, dwell_time = self._mask_and_reduce(imgs, confounds)
+        if (self.n_batch > 1):
+            stab_maps, dwell_time = self._mask_and_reduce_batch(imgs, confounds)
+        else:
+            stab_maps, dwell_time = self._mask_and_reduce(imgs, confounds)
 
         # Return components
-        self.components_ = stab_maps.transpose()
+        self.components_ = stab_maps
         self.dwell_time_ = dwell_time
         return self
+
+
+    def _mask_and_reduce_batch(self, imgs, confounds=None):
+        """Iterate dypac on batches of files.
+        """
+
+        for bb in range(self.n_batch):
+            slice_batch = slice(bb, len(imgs), self.n_batch)
+            if self.verbose:
+                print("[{0}] Processing batch {1}".format(self.__class__.__name__, bb))
+            stab_maps, dwell_time = self._mask_and_reduce(imgs[slice_batch], confounds[slice_batch])
+            if bb > 0:
+                stab_maps_all = vstack([stab_maps_all, stab_maps])
+                dwell_time_all = np.concatenate([dwell_time_all, dwell_time])
+            else:
+                stab_maps_all = stab_maps
+                dwell_time_all = dwell_time
+
+        # Consensus clustering step
+        cent, states_all, inert = k_means(
+            stab_maps_all,
+            n_clusters=self.n_states,
+            init="k-means++",
+            max_iter=self.max_iter,
+            random_state=self.random_state,
+            n_init=self.n_init,
+        )
+
+        # average stability maps and dwell times across consensus states
+        stab_maps_cons, dwell_time_cons = bpp.stab_maps(stab_maps_all, states_all,
+            self.n_replications, self.n_states, dwell_time_all)
+
+        return stab_maps_cons, dwell_time_cons
 
     def _mask_and_reduce(self, imgs, confounds=None):
         """Uses cluster aggregation over sliding windows to estimate
@@ -266,14 +311,9 @@ class dypac(BaseDecomposition):
 
         Returns
         ------
-        stab_maps: ndarray or memorymap
+        stab_maps: ndarray
             Concatenation of dynamic parcels across all datasets.
         """
-        if not hasattr(imgs, "__iter__"):
-            imgs = [imgs]
-
-        if confounds is None:
-            confounds = itertools.repeat(confounds)
 
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
             this_data = self.masker_.transform(img, confound)
