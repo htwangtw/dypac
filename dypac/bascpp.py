@@ -135,7 +135,7 @@ def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, 
     """Find dynamic states based on the similarity of clusters over time."""
     if verbose:
         print("Consensus clustering.")
-    cent, states, inert = k_means(
+    _, states, _ = k_means(
         onehot,
         n_clusters=n_states,
         init="k-means++",
