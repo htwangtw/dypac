@@ -15,8 +15,7 @@ from sklearn.preprocessing import scale
 
 
 def _select_subsample(y, subsample_size, start=None):
-    """ Select a random subsample in a data array
-    """
+    """ Select a random subsample in a data array."""
     n_samples = y.shape[1]
     subsample_size = np.min([subsample_size, n_samples])
     max_start = n_samples - subsample_size
@@ -50,8 +49,7 @@ def _part2onehot(part, n_clusters=0):
 
 
 def _start_window(n_time, n_replications, subsample_size):
-    """ Get a list of the starting points of sliding windows.
-    """
+    """ Get a list of the starting points of sliding windows."""
     max_replications = n_time - subsample_size + 1
     n_replications = np.min([max_replications, n_replications])
     list_start = np.linspace(0, max_replications, n_replications)
@@ -61,8 +59,7 @@ def _start_window(n_time, n_replications, subsample_size):
 
 
 def _trim_states(onehot, states, n_states, verbose, threshold_sim):
-    """Trim the states clusters to exclude outliers
-    """
+    """Trim the states clusters to exclude outliers."""
     for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
         [ix, iy, val] = find(onehot[states == ss, :])
         size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()
@@ -78,7 +75,7 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
 def replicate_clusters(
     y, subsample_size, n_clusters, n_replications, max_iter, n_init, random_state=None, verbose=False, embedding=np.array([]), desc="", normalize=False
 ):
-    """ Replicate a clustering on random subsamples
+    """Replicate a clustering on random subsamples
 
     Parameters
     ----------
@@ -135,8 +132,7 @@ def replicate_clusters(
 
 
 def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, random_state=None, verbose=False):
-    """Find dynamic states based on the similarity of clusters over time
-    """
+    """Find dynamic states based on the similarity of clusters over time."""
     if verbose:
         print("Consensus clustering.")
     cent, states, inert = k_means(
@@ -152,8 +148,7 @@ def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, 
 
 
 def stab_maps(onehot, states, n_replications, n_states, weights=None):
-    """Generate stability maps associated with different states
-    """
+    """Generate stability maps associated with different states."""
 
     dwell_time = np.zeros(n_states)
     val = np.array([])

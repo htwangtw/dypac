@@ -1,5 +1,4 @@
-""" Dynamic Parcel Aggregation with Clustering (dypac).
-"""
+""" Dynamic Parcel Aggregation with Clustering (dypac)."""
 
 # Authors: Pierre Bellec, Amal Boukhdir
 # License: BSD 3 clause
@@ -7,7 +6,7 @@ import glob
 import itertools
 import warnings
 
-from scipy.sparse import csr_matrix, vstack
+from scipy.sparse import vstack
 import numpy as np
 
 from sklearn.cluster import k_means
@@ -15,7 +14,7 @@ from sklearn.utils import check_random_state
 from sklearn.linear_model import LinearRegression
 
 from nilearn import EXPAND_PATH_WILDCARDS
-from nilearn._utils.compat import Memory, Parallel, _basestring
+from nilearn._utils.compat import Memory, _basestring
 from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
@@ -274,23 +273,22 @@ class dypac(BaseDecomposition):
 
 
     def _mask_and_reduce_batch(self, imgs, confounds=None):
-        """Iterate dypac on batches of files.
-        """
+        """Iterate dypac on batches of files."""
 
         for bb in range(self.n_batch):
             slice_batch = slice(bb, len(imgs), self.n_batch)
             if self.verbose:
                 print("[{0}] Processing batch {1}".format(self.__class__.__name__, bb))
             stab_maps, dwell_time = self._mask_and_reduce(imgs[slice_batch], confounds[slice_batch])
-            if bb > 0:
-                stab_maps_all = vstack([stab_maps_all, stab_maps])
-                dwell_time_all = np.concatenate([dwell_time_all, dwell_time])
-            else:
+            if bb == 0:
                 stab_maps_all = stab_maps
                 dwell_time_all = dwell_time
+            else:
+                stab_maps_all = vstack([stab_maps_all, stab_maps])
+                dwell_time_all = np.concatenate([dwell_time_all, dwell_time])
 
         # Consensus clustering step
-        cent, states_all, inert = k_means(
+        _, states_all, _ = k_means(
             stab_maps_all,
             n_clusters=self.n_states,
             init="k-means++",
@@ -332,10 +330,10 @@ class dypac(BaseDecomposition):
                 desc="Replicating clusters in data #{0}".format(ind),
                 verbose=self.verbose,
             )
-            if ind > 0:
-                onehot_all = vstack([onehot_all, onehot])
-            else:
+            if ind == 0:
                 onehot_all = onehot
+            else:
+                onehot_all = vstack([onehot_all, onehot])
 
         # find the states
         states = bpp.find_states(
