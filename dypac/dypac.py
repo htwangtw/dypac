@@ -1,30 +1,25 @@
-"""
-Dynamic Parcel Aggregation with Clustering (dypac)
-"""
+"""Dynamic Parcel Aggregation with Clustering (dypac)."""
 
 # Authors: Pierre Bellec, Amal Boukhdir
 # License: BSD 3 clause
 import glob
 import itertools
+import warnings
 
-from tqdm import tqdm
-
-import bascpp as bpp
-from scipy.sparse import csr_matrix, vstack, find
+from scipy.sparse import vstack
 import numpy as np
 
-#from .bascpp import replicate_clusters, find_states, stab_maps
+from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import scale
 
 from nilearn import EXPAND_PATH_WILDCARDS
-from nilearn._utils.compat import Memory, Parallel, delayed, _basestring
-from nilearn._utils.niimg import _safe_get_data
+from nilearn._utils.compat import Memory, _basestring
 from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
-from nilearn.image import new_img_like
+
+import bascpp as bpp
 
 
 class dypac(BaseDecomposition):
@@ -225,7 +220,6 @@ class dypac(BaseDecomposition):
 
         """
         # Base fit for decomposition estimators : compute the embedded masker
-
         if isinstance(imgs, _basestring):
             if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
                 imgs = _resolve_globbing(imgs)
@@ -253,10 +247,92 @@ class dypac(BaseDecomposition):
             self.masker_.fit()
         self.mask_img_ = self.masker_.mask_img_
 
+        # if no confounds have been specified, match length of imgs
+        if confounds is None:
+            confounds = list(itertools.repeat(confounds, len(imgs)))
+
+        # Control random number generation
+        self.random_state = check_random_state(self.random_state)
+
+        # Check that number of batches is reasonable
+        if self.n_batch > len(imgs):
+            warnings.warn("{0} batches were requested, but only {1} datasets "
+                          "avaible. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
+            self.n_batch = len(imgs)
+
         # mask_and_reduce step
-        if self.verbose:
-            print("[{0}] Loading data".format(self.__class__.__name__))
-        onehot = self._mask_and_reduce(imgs, confounds)
+        if (self.n_batch > 1):
+            stab_maps, dwell_time = self._mask_and_reduce_batch(imgs, confounds)
+        else:
+            stab_maps, dwell_time = self._mask_and_reduce(imgs, confounds)
+
+        # Return components
+        self.components_ = stab_maps
+        self.dwell_time_ = dwell_time
+        return self
+
+
+    def _mask_and_reduce_batch(self, imgs, confounds=None):
+        """Iterate dypac on batches of files."""
+        for bb in range(self.n_batch):
+            slice_batch = slice(bb, len(imgs), self.n_batch)
+            if self.verbose:
+                print("[{0}] Processing batch {1}".format(self.__class__.__name__, bb))
+            stab_maps, dwell_time = self._mask_and_reduce(imgs[slice_batch], confounds[slice_batch])
+            if bb == 0:
+                stab_maps_all = stab_maps
+                dwell_time_all = dwell_time
+            else:
+                stab_maps_all = vstack([stab_maps_all, stab_maps])
+                dwell_time_all = np.concatenate([dwell_time_all, dwell_time])
+
+        # Consensus clustering step
+        _, states_all, _ = k_means(
+            stab_maps_all,
+            n_clusters=self.n_states,
+            init="k-means++",
+            max_iter=self.max_iter,
+            random_state=self.random_state,
+            n_init=self.n_init,
+        )
+
+        # average stability maps and dwell times across consensus states
+        stab_maps_cons, dwell_time_cons = bpp.stab_maps(stab_maps_all, states_all,
+            self.n_replications, self.n_states, dwell_time_all)
+
+        return stab_maps_cons, dwell_time_cons
+
+    def _mask_and_reduce(self, imgs, confounds=None):
+        """Uses cluster aggregation over sliding windows to estimate
+        stable dynamic parcels from a list of 4D fMRI datasets.
+
+        Returns
+        ------
+        stab_maps: ndarray
+            Concatenation of dynamic parcels across all datasets.
+        """
+
+        for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
+            this_data = self.masker_.transform(img, confound)
+            # Now get rid of the img as fast as possible, to free a
+            # reference count on it, and possibly free the corresponding
+            # data
+            del img
+            onehot = bpp.replicate_clusters(
+                this_data.transpose(),
+                subsample_size=self.subsample_size,
+                n_clusters=self.n_clusters,
+                n_replications=self.n_replications,
+                max_iter=self.max_iter,
+                n_init=self.n_init,
+                random_state=self.random_state,
+                desc="Replicating clusters in data #{0}".format(ind),
+                verbose=self.verbose,
+            )
+            if ind == 0:
+                onehot_all = onehot
+            else:
+                onehot_all = vstack([onehot_all, onehot])
 
         # find the states
         states = bpp.find_states(
@@ -265,6 +341,7 @@ class dypac(BaseDecomposition):
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
             n_batch=self.n_batch,
+            random_state=self.random_state,
             n_init=self.n_init,
             verbose=self.verbose,
         )
@@ -274,55 +351,7 @@ class dypac(BaseDecomposition):
             onehot, states, self.n_replications, self.n_states
         )
 
-        # Return components
-        self.components_ = stab_maps.transpose()
-        self.dwell_time_ = dwell_time
-        return self
-
-    def _mask_and_reduce(self, imgs, confounds=None):
-        """Uses cluster aggregation over sliding windows to estimate
-        stable dynamic parcels from a list of 4D fMRI datasets.
-
-        Returns
-        ------
-        stab_maps: ndarray or memorymap
-            Concatenation of dynamic parcels across all datasets.
-        """
-        if not hasattr(imgs, "__iter__"):
-            imgs = [imgs]
-
-        if confounds is None:
-            confounds = itertools.repeat(confounds)
-
-        onehot = csr_matrix([0,])
-        for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
-            if ind > 0:
-                onehot = vstack(
-                    [onehot, self._mask_and_cluster_single(img=img, confound=confound, ind=ind)]
-                )
-            else:
-                onehot = self._mask_and_cluster_single(img=img, confound=confound, ind=ind)
-        return onehot
-
-    def _mask_and_cluster_single(self, img, confound, ind):
-        """Utility function for _mask_and_reduce"""
-        this_data = self.masker_.transform(img, confound)
-        # Now get rid of the img as fast as possible, to free a
-        # reference count on it, and possibly free the corresponding
-        # data
-        del img
-        random_state = check_random_state(self.random_state)
-        onehot = bpp.replicate_clusters(
-            this_data.transpose(),
-            subsample_size=self.subsample_size,
-            n_clusters=self.n_clusters,
-            n_replications=self.n_replications,
-            max_iter=self.max_iter,
-            n_init=self.n_init,
-            desc="Replicating clusters in data #{0}".format(ind),
-            verbose=self.verbose,
-        )
-        return onehot
+        return stab_maps, dwell_time
 
     def transform_sparse(self, img, confound=None):
         """Transform a 4D dataset in a component space"""

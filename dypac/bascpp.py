@@ -15,8 +15,7 @@ from sklearn.preprocessing import scale
 
 
 def _select_subsample(y, subsample_size, start=None):
-    """ Select a random subsample in a data array
-    """
+    """Select a random subsample in a data array."""
     n_samples = y.shape[1]
     subsample_size = np.min([subsample_size, n_samples])
     max_start = n_samples - subsample_size
@@ -30,8 +29,8 @@ def _select_subsample(y, subsample_size, start=None):
 
 
 def _part2onehot(part, n_clusters=0):
-    """ Convert a series of partition (one per row) with integer clusters into
-        a series of one-hot encoding vectors (one per row and cluster).
+    """Convert a series of partition (one per row) with integer clusters into
+       a series of one-hot encoding vectors (one per row and cluster).
     """
     if n_clusters == 0:
         n_clusters = np.max(part) + 1
@@ -50,8 +49,7 @@ def _part2onehot(part, n_clusters=0):
 
 
 def _start_window(n_time, n_replications, subsample_size):
-    """ Get a list of the starting points of sliding windows.
-    """
+    """Get a list of the starting points of sliding windows."""
     max_replications = n_time - subsample_size + 1
     n_replications = np.min([max_replications, n_replications])
     list_start = np.linspace(0, max_replications, n_replications)
@@ -61,13 +59,12 @@ def _start_window(n_time, n_replications, subsample_size):
 
 
 def _trim_states(onehot, states, n_states, verbose, threshold_sim):
-    """Trim the states clusters to exclude outliers
-    """
+    """Trim the states clusters to exclude outliers."""
     for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
         [ix, iy, val] = find(onehot[states == ss, :])
         size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()
         ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
-        avg_stab = np.bincount(ix, weights=ref_cluster[0, iy].flatten())
+        avg_stab = np.bincount(ix, weights=ref_cluster[0,iy].flatten())
         avg_stab = np.divide(avg_stab, size_onehot)
         tmp = states[states == ss]
         tmp[avg_stab < threshold_sim] = n_states
@@ -76,18 +73,9 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
 
 
 def replicate_clusters(
-    y,
-    subsample_size,
-    n_clusters,
-    n_replications,
-    max_iter,
-    n_init,
-    verbose,
-    embedding=np.array([]),
-    desc="",
-    normalize=False,
+    y, subsample_size, n_clusters, n_replications, max_iter, n_init, random_state=None, verbose=False, embedding=np.array([]), desc="", normalize=False
 ):
-    """ Replicate a clustering on random subsamples
+    """Replicate a clustering on random subsamples
 
     Parameters
     ----------
@@ -138,53 +126,51 @@ def replicate_clusters(
             init="k-means++",
             max_iter=max_iter,
             n_init=n_init,
+            random_state=random_state,
         )
     return _part2onehot(part, n_clusters)
 
 
-def find_states(
-    onehot,
-    n_states=10,
-    max_iter=30,
-    threshold_sim=0.3,
-    n_batch=0,
-    n_init=10,
-    verbose=False,
-):
-    """Find dynamic states based on the similarity of clusters over time
-    """
+def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, random_state=None, verbose=False):
+    """Find dynamic states based on the similarity of clusters over time."""
     if verbose:
         print("Consensus clustering.")
     cent, states, inert = k_means(
-        onehot, n_clusters=n_states, init="k-means++", max_iter=max_iter, n_init=n_init,
+        onehot,
+        n_clusters=n_states,
+        init="k-means++",
+        max_iter=max_iter,
+        random_state=random_state,
+        n_init=n_init,
     )
     states = _trim_states(onehot, states, n_states, verbose, threshold_sim)
     return states
 
 
-def stab_maps(onehot, states, n_replications, n_states):
-    """Generate stability maps associated with different states
-    """
-
+def stab_maps(onehot, states, n_replications, n_states, weights=None):
+    """Generate stability maps associated with different states."""
     dwell_time = np.zeros(n_states)
     val = np.array([])
     col_ind = np.array([])
     row_ind = np.array([])
 
     for ss in range(0, n_states):
-        dwell_time[ss] = np.sum(states == ss) / n_replications
+        if np.any(weights == None):
+            dwell_time[ss] = np.sum(states == ss) / n_replications
+        else:
+            dwell_time[ss] = np.mean(weights[states == ss])
         if np.any(states == ss):
             stab_map = onehot[states == ss, :].mean(dtype="float", axis=0)
             mask = stab_map > 0
 
-            col_ind = np.append(col_ind, np.repeat(ss, np.sum(mask)))
-            row_ind = np.append(row_ind, np.nonzero(mask)[1])
+            row_ind = np.append(row_ind, np.repeat(ss, np.sum(mask)))
+            col_ind = np.append(col_ind, np.nonzero(mask)[1])
             val = np.append(val, stab_map[mask])
-    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[onehot.shape[1], n_states])
+    stab_maps = csr_matrix((val, (row_ind, col_ind)), shape=[n_states, onehot.shape[1]])
 
     # Re-order stab maps by descending dwell time
     indsort = np.argsort(-dwell_time)
-    stab_maps = stab_maps[:, indsort]
+    stab_maps = stab_maps[indsort, :]
     dwell_time = dwell_time[indsort]
 
     return stab_maps, dwell_time
