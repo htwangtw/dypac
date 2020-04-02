@@ -19,10 +19,6 @@ jobs:
           command: |
             pytest dypac/test_bascpp.py
           name: Test_bascppp
-      - run:
-          command: |
-            pytest dypac/test_dypac.py
-          name: Test_dypac
       - store_test_results:
           path: test-results
 
