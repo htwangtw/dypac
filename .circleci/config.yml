@@ -14,6 +14,7 @@ jobs:
           command: |
             pip install --progress-bar off -r requirements.txt
             pip install --progress-bar off pytest
+            pip install --progress-bar off -e dypac/
       - run:
           command: |
             pytest dypac/test_bascpp.py
