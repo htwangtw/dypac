@@ -161,8 +161,7 @@ class dypac(BaseDecomposition):
         memory_level=0,
         verbose=1,
     ):
-        """Set up default attributes for the class.
-        """
+        """Set up default attributes for the class."""
         # All those settings are taken from nilearn BaseDecomposition
         self.random_state = random_state
         self.mask = mask
@@ -203,7 +202,7 @@ class dypac(BaseDecomposition):
 
     def fit(self, imgs, confounds=None):
         """
-        Compute the mask and the dynamic parcels across datasets
+        Compute the mask and the dynamic parcels across datasets.
 
         Parameters
         ----------
