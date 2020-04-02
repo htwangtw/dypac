@@ -13,14 +13,16 @@ jobs:
       - run:
           command: |
             pip install --progress-bar off -r requirements.txt
-            pip install --progress-bar off pytest
+            pip install --progress-bar off pytest, coverage
             pip install --progress-bar off -e dypac/
       - run:
           command: |
-            pytest dypac/test_bascpp.py
+            coverage run -m pytest dypac/test_bascpp.py
+            coverage report
+            coverage html
           name: Test_bascppp
-      - store_test_results:
-          path: test-results
+      - store_artifacts:
+          path: htmlcov
 
 workflows:
   main:
