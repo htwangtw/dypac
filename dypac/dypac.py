@@ -14,7 +14,7 @@ from sklearn.utils import check_random_state
 from sklearn.linear_model import LinearRegression
 
 from nilearn import EXPAND_PATH_WILDCARDS
-from nilearn._utils.compat import Memory, _basestring
+from joblib import Memory
 from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
@@ -220,11 +220,11 @@ class dypac(BaseDecomposition):
 
         """
         # Base fit for decomposition estimators : compute the embedded masker
-        if isinstance(imgs, _basestring):
+        if isinstance(imgs, str):
             if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
                 imgs = _resolve_globbing(imgs)
 
-        if isinstance(imgs, _basestring) or not hasattr(imgs, "__iter__"):
+        if isinstance(imgs, str) or not hasattr(imgs, "__iter__"):
             # these classes are meant for list of 4D images
             # (multi-subject), we want it to work also on a single
             # subject, so we hack it.
@@ -256,8 +256,7 @@ class dypac(BaseDecomposition):
 
         # Check that number of batches is reasonable
         if self.n_batch > len(imgs):
-            warnings.warn("{0} batches were requested, but only {1} datasets "
-                          "avaible. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
+            warnings.warn("{0} batches were requested, but only {1} datasets avaible. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
             self.n_batch = len(imgs)
 
         # mask_and_reduce step

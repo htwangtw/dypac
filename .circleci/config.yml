@@ -12,8 +12,8 @@ jobs:
       - checkout
       - run:
           command: |
-            pip install -r requirements.txt
-            pip install pytest
+            pip install --progress-bar off -r requirements.txt
+            pip install --progress-bar off pytest
       - run:
           command: |
             pytest dypac/test_bascpp.py
