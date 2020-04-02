@@ -21,6 +21,10 @@ jobs:
             coverage report
             coverage html
           name: Test_bascppp
+      - run:
+          command: |
+            bash <(curl -s https://codecov.io/bash)
+          name: Upload_codecov
       - store_artifacts:
           path: htmlcov
 
