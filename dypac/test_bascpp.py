@@ -20,7 +20,7 @@ def simu_tseries(n_time, n_roi, n_clusters, alpha):
 
         Returns
         -------
-        y: ndarray size (n_roi * n_clusters) x n_time
+        y: ndarray size n_roi x n_time
             simulated time series
         gt: ndarray size n_roi
             the ground truth partition (cluster I is filled with Is)
@@ -45,3 +45,17 @@ def test_replicate_clusters():
 
     # Check that onehot has the right dimensions
     assert onehot.shape == (n_replications * n_clusters, tseries.shape[0])
+
+def test_find_states():
+    # Simulate two time series with distinct states
+    tseries1, gt1 = simu_tseries(n_time=100, n_roi=90, n_clusters=2, alpha=2)
+    tseries2, gt2 = simu_tseries(n_time=100, n_roi=90, n_clusters=3, alpha=2)
+    tseries = np.concatenate([tseries1, tseries2], axis=1)
+    n_replications = 20
+    n_clusters = 3
+    n_states = 5
+    onehot = bpp.replicate_clusters(tseries, subsample_size=30, n_clusters=n_clusters, n_replications=n_replications, max_iter=30, n_init=10)
+    states = bpp.find_states(onehot, n_states=n_states)
+
+    assert states.shape == (onehot.shape[0],)
+    assert np.max(states) == n_states-1

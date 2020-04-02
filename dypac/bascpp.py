@@ -73,7 +73,7 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
 
 
 def replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter, n_init, random_state=None, verbose=False, embedding=np.array([]), desc="", normalize=False
+    y, subsample_size, n_clusters, n_replications, max_iter=100, n_init=10, random_state=None, verbose=False, embedding=np.array([]), desc="", normalize=False
 ):
     """Replicate a clustering on random subsamples
 
@@ -131,7 +131,7 @@ def replicate_clusters(
     return _part2onehot(part, n_clusters)
 
 
-def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_batch=0, n_init=10, random_state=None, verbose=False):
+def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_init=10, random_state=None, verbose=False):
     """Find dynamic states based on the similarity of clusters over time."""
     if verbose:
         print("Consensus clustering.")
