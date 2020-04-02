@@ -23,7 +23,8 @@ import bascpp as bpp
 
 
 class dypac(BaseDecomposition):
-    """Perform Stable Dynamic Cluster Analysis.
+    """
+    Perform Stable Dynamic Cluster Analysis.
 
     Parameters
     ----------
@@ -130,7 +131,6 @@ class dypac(BaseDecomposition):
         See http://nilearn.github.io/manipulating_images/input_output.html
         The mask of the data. If no mask was given at masker creation, contains
         the automatically computed mask.
-
     """
 
     def __init__(
@@ -160,6 +160,7 @@ class dypac(BaseDecomposition):
         memory_level=0,
         verbose=1,
     ):
+        """Set up default attributes for the class."""
         # All those settings are taken from nilearn BaseDecomposition
         self.random_state = random_state
         self.mask = mask
@@ -190,6 +191,7 @@ class dypac(BaseDecomposition):
         self.threshold_sim = threshold_sim
 
     def _check_components_(self):
+        """Check for presence of estimated components."""
         if not hasattr(self, "components_"):
             raise ValueError(
                 "Object has no components_ attribute. "
@@ -198,7 +200,8 @@ class dypac(BaseDecomposition):
             )
 
     def fit(self, imgs, confounds=None):
-        """Compute the mask and the dynamic parcels across datasets
+        """
+        Compute the mask and the dynamic parcels across datasets.
 
         Parameters
         ----------
@@ -217,7 +220,6 @@ class dypac(BaseDecomposition):
          self: object
             Returns the instance itself. Contains attributes listed
             at the object level.
-
         """
         # Base fit for decomposition estimators : compute the embedded masker
         if isinstance(imgs, str):
@@ -306,9 +308,12 @@ class dypac(BaseDecomposition):
         stable dynamic parcels from a list of 4D fMRI datasets.
 
         Returns
-        ------
+        -------
         stab_maps: ndarray
-            Concatenation of dynamic parcels across all datasets.
+            stability maps of each state.
+
+        dwell_time: ndarray
+            dwell time of each state.
         """
 
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
@@ -353,7 +358,7 @@ class dypac(BaseDecomposition):
         return stab_maps, dwell_time
 
     def transform_sparse(self, img, confound=None):
-        """Transform a 4D dataset in a component space"""
+        """Transform a 4D dataset in a component space."""
         self._check_components_()
         this_data = self.masker_.transform(img, confound)
         del img
@@ -363,6 +368,6 @@ class dypac(BaseDecomposition):
         return reg.coef_
 
     def inverse_transform_sparse(self, weights):
-        """Transform component weights as a 4D dataset"""
+        """Transform component weights as a 4D dataset."""
         self._check_components_()
         self.masker_.inverse_transform(weights * self.components_)

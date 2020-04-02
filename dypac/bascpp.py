@@ -7,7 +7,7 @@ Scalable and fast ensemble clustering
 # License: BSD 3 clause
 from tqdm import tqdm
 
-from scipy.sparse import csr_matrix, vstack, find
+from scipy.sparse import csr_matrix, find
 import numpy as np
 
 from sklearn.cluster import k_means
@@ -61,7 +61,7 @@ def _start_window(n_time, n_replications, subsample_size):
 def _trim_states(onehot, states, n_states, verbose, threshold_sim):
     """Trim the states clusters to exclude outliers."""
     for ss in tqdm(range(n_states), disable=not verbose, desc="Trimming states"):
-        [ix, iy, val] = find(onehot[states == ss, :])
+        ix, iy, _ = find(onehot[states == ss, :])
         size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()
         ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
         avg_stab = np.bincount(ix, weights=ref_cluster[0,iy].flatten())
@@ -120,7 +120,7 @@ def replicate_clusters(
             samp = scale(samp, axis=1)
         if embedding.shape[0] > 0:
             samp = np.concatenate([samp, embedding], axis=1)
-        cent, part[rr, :], inert = k_means(
+        _, part[rr, :], _ = k_means(
             samp,
             n_clusters=n_clusters,
             init="k-means++",
