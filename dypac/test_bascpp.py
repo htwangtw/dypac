@@ -37,7 +37,7 @@ def simu_tseries(n_time, n_roi, n_clusters, alpha):
     return y, gt
 
 def test_replicate_clusters():
-
+    # Generate a single state with obvious structure
     tseries, gt = simu_tseries(n_time=100, n_roi=30, n_clusters=3, alpha=2)
     n_replications = 10
     n_clusters = 3
@@ -58,4 +58,20 @@ def test_find_states():
     states = bpp.find_states(onehot, n_states=n_states)
 
     assert states.shape == (onehot.shape[0],)
-    assert np.max(states) == n_states-1
+    assert np.max(states) <= n_states-1
+
+
+def test_stab_maps():
+    # Generate a single state with noisy structure
+    tseries, gt = simu_tseries(n_time=100, n_roi=30, n_clusters=3, alpha=0.2)
+    n_replications = 10
+    n_clusters = 3
+    n_states = 3
+    onehot = bpp.replicate_clusters(tseries, subsample_size=30, n_clusters=n_clusters, n_replications=n_replications, max_iter=30, n_init=10)
+    states = bpp.find_states(onehot, n_states=n_states)
+    stab_maps, dwell_time = bpp.stab_maps(onehot, states, n_replications, n_states)
+
+    # Check that stab_maps has the right dimensions
+    print(stab_maps)
+    assert stab_maps.shape == (n_states, tseries.shape[0])
+    
