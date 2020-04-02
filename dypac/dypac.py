@@ -131,7 +131,6 @@ class dypac(BaseDecomposition):
         See http://nilearn.github.io/manipulating_images/input_output.html
         The mask of the data. If no mask was given at masker creation, contains
         the automatically computed mask.
-
     """
 
     def __init__(
@@ -221,7 +220,6 @@ class dypac(BaseDecomposition):
          self: object
             Returns the instance itself. Contains attributes listed
             at the object level.
-
         """
         # Base fit for decomposition estimators : compute the embedded masker
         if isinstance(imgs, str):
