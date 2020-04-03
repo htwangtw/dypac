@@ -17,7 +17,7 @@ jobs:
             pip install --progress-bar off -e dypac/
       - run:
           command: |
-            coverage run --source bascpp -m pytest dypac/test_bascpp.py
+            coverage run --source bascpp,dypac -m pytest dypac/test_bascpp.py dypac/test_dypac.py
             coverage report
             coverage html
           name: Test_bascppp

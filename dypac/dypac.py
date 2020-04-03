@@ -344,7 +344,6 @@ class dypac(BaseDecomposition):
             n_states=self.n_states,
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
-            n_batch=self.n_batch,
             random_state=self.random_state,
             n_init=self.n_init_aggregation,
             verbose=self.verbose,

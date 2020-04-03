@@ -38,7 +38,7 @@ def simu_tseries(n_time, n_roi, n_clusters, alpha):
 
 def test_replicate_clusters():
     # Generate a single state with obvious structure
-    tseries, gt = simu_tseries(n_time=100, n_roi=30, n_clusters=3, alpha=2)
+    tseries, _ = simu_tseries(n_time=100, n_roi=30, n_clusters=3, alpha=2)
     n_replications = 10
     n_clusters = 3
     onehot = bpp.replicate_clusters(tseries, subsample_size=30, n_clusters=n_clusters, n_replications=n_replications, max_iter=30, n_init=10)
@@ -48,8 +48,8 @@ def test_replicate_clusters():
 
 def test_find_states():
     # Simulate two time series with distinct states
-    tseries1, gt1 = simu_tseries(n_time=100, n_roi=90, n_clusters=2, alpha=2)
-    tseries2, gt2 = simu_tseries(n_time=100, n_roi=90, n_clusters=3, alpha=2)
+    tseries1, _ = simu_tseries(n_time=100, n_roi=90, n_clusters=2, alpha=2)
+    tseries2, _ = simu_tseries(n_time=100, n_roi=90, n_clusters=3, alpha=2)
     tseries = np.concatenate([tseries1, tseries2], axis=1)
     n_replications = 20
     n_clusters = 3
@@ -63,7 +63,7 @@ def test_find_states():
 
 def test_stab_maps():
     # Generate a single state with noisy structure
-    tseries, gt = simu_tseries(n_time=100, n_roi=30, n_clusters=3, alpha=0.2)
+    tseries, _ = simu_tseries(n_time=100, n_roi=30, n_clusters=3, alpha=0.2)
     n_replications = 10
     n_clusters = 3
     n_states = 3
@@ -74,4 +74,3 @@ def test_stab_maps():
     # Check that stab_maps has the right dimensions
     print(stab_maps)
     assert stab_maps.shape == (n_states, tseries.shape[0])
-    
