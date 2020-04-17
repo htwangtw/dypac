@@ -340,7 +340,7 @@ class dypac(BaseDecomposition):
 
         # find the states
         states = bpp.find_states(
-            onehot,
+            onehot_all,
             n_states=self.n_states,
             max_iter=self.max_iter,
             threshold_sim=self.threshold_sim,
@@ -351,7 +351,7 @@ class dypac(BaseDecomposition):
 
         # Generate the stability maps
         stab_maps, dwell_time = bpp.stab_maps(
-            onehot, states, self.n_replications, self.n_states
+            onehot_all, states, self.n_replications, self.n_states
         )
 
         return stab_maps, dwell_time
