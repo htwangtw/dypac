@@ -258,7 +258,7 @@ class dypac(BaseDecomposition):
 
         # Check that number of batches is reasonable
         if self.n_batch > len(imgs):
-            warnings.warn("{0} batches were requested, but only {1} datasets avaible. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
+            warnings.warn("{0} batches were requested, but only {1} datasets available. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
             self.n_batch = len(imgs)
 
         # mask_and_reduce step
