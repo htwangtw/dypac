@@ -5,6 +5,7 @@ Scalable and fast ensemble clustering
 
 # Authors: Pierre Bellec, Amal Boukhdir
 # License: BSD 3 clause
+import warnings
 from tqdm import tqdm
 
 from scipy.sparse import csr_matrix, find
@@ -110,9 +111,11 @@ def replicate_clusters(
     onehot: boolean, sparse array
         onehot representation of clusters, stacked over all replications.
     """
-    part = np.zeros([n_replications, y.shape[0]], dtype="int")
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
-    range_replication = range(n_replications)
+    if (list_start.shape[0] < n_replications):
+        warnings.warn("{0} replications were requested, but only {1} available.".format(n_replications, list_start.shape[0]))
+    range_replication = range(list_start.shape[0])
+    part = np.zeros([list_start.shape[0], y.shape[0]], dtype="int")
 
     for rr in tqdm(range_replication, disable=not verbose, desc=desc):
         samp = _select_subsample(y, subsample_size, list_start[rr])
