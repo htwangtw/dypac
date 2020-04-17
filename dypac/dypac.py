@@ -199,6 +199,7 @@ class dypac(BaseDecomposition):
                 "been called."
             )
 
+
     def fit(self, imgs, confounds=None):
         """
         Compute the mask and the dynamic parcels across datasets.
@@ -275,31 +276,20 @@ class dypac(BaseDecomposition):
 
     def _mask_and_reduce_batch(self, imgs, confounds=None):
         """Iterate dypac on batches of files."""
+        stab_maps_list = []
+        dwell_time_list = []
         for bb in range(self.n_batch):
             slice_batch = slice(bb, len(imgs), self.n_batch)
             if self.verbose:
                 print("[{0}] Processing batch {1}".format(self.__class__.__name__, bb))
             stab_maps, dwell_time = self._mask_and_reduce(imgs[slice_batch], confounds[slice_batch])
-            if bb == 0:
-                stab_maps_all = stab_maps
-                dwell_time_all = dwell_time
-            else:
-                stab_maps_all = vstack([stab_maps_all, stab_maps])
-                dwell_time_all = np.concatenate([dwell_time_all, dwell_time])
+            stab_maps_list.append(stab_maps)
+            dwell_time_list.append(dwell_time)
 
-        # Consensus clustering step
-        _, states_all, _ = k_means(
-            stab_maps_all,
-            n_clusters=self.n_states,
-            init="k-means++",
-            max_iter=self.max_iter,
-            random_state=self.random_state,
-            n_init=self.n_init_aggregation,
-        )
-
-        # average stability maps and dwell times across consensus states
-        stab_maps_cons, dwell_time_cons = bpp.stab_maps(stab_maps_all, states_all,
-            self.n_replications, self.n_states, dwell_time_all)
+        n_init=self.n_init_aggregation,
+        stab_maps_cons, dwell_time_cons = bpp.consensus_batch(stab_maps_list,
+            dwell_time_list, self.n_replications, self.n_states, self.max_iter,
+            self.n_init_aggregation, self.random_state, self.verbose)
 
         return stab_maps_cons, dwell_time_cons
 
@@ -316,6 +306,7 @@ class dypac(BaseDecomposition):
             dwell time of each state.
         """
 
+        onehot_list = []
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
             this_data = self.masker_.transform(img, confound)
             # Now get rid of the img as fast as possible, to free a
@@ -333,10 +324,10 @@ class dypac(BaseDecomposition):
                 desc="Replicating clusters in data #{0}".format(ind),
                 verbose=self.verbose,
             )
-            if ind == 0:
-                onehot_all = onehot
-            else:
-                onehot_all = vstack([onehot_all, onehot])
+            onehot_list.append(onehot)
+        onehot_all = vstack(onehot_list)
+        del onehot_list
+        del onehot
 
         # find the states
         states = bpp.find_states(
