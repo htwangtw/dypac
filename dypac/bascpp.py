@@ -6,7 +6,6 @@ Scalable and fast ensemble clustering
 # Authors: Pierre Bellec, Amal Boukhdir
 # License: BSD 3 clause
 import warnings
-import weakref
 from tqdm import tqdm
 
 from scipy.sparse import csr_matrix, find, vstack
@@ -118,10 +117,11 @@ def replicate_clusters(
     part = np.zeros([list_start.shape[0], y.shape[0]], dtype="int")
 
     for rr in tqdm(range_replication, disable=not verbose, desc=desc):
-        samp = _select_subsample(y, subsample_size, list_start[rr])
         if normalize:
             samp = scale(_select_subsample(y, subsample_size, list_start[rr]),
                          axis=1)
+        else:
+            samp = _select_subsample(y, subsample_size, list_start[rr])
         if embedding.shape[0] > 0:
             samp = np.concatenate([_select_subsample(y, subsample_size,
                                   list_start[rr]), embedding], axis=1)
@@ -177,10 +177,6 @@ def stab_maps(onehot, states, n_replications, n_states, weights=None):
             row_ind.append(np.repeat(indsort[ss], np.sum(mask)))
             col_ind.append(np.nonzero(mask)[1])
             val.append(np.array(stab_map[mask]).flatten())
-    val_np = np.concatenate(val)
-    row_np = np.concatenate(row_ind)
-    col_np = np.concatenate(col_ind)
-
     stab_maps = csr_matrix((np.concatenate(val), (np.concatenate(row_ind),
         np.concatenate(col_ind))), shape=[n_states, onehot.shape[1]])
 
@@ -194,6 +190,8 @@ def consensus_batch(stab_maps_list, dwell_time_list, n_replications, n_states=10
         del dwell_time_list
 
         # Consensus clustering step
+        if verbose:
+            print("Inter-batch consensus")
         _, states_all, _ = k_means(
             stab_maps_all,
             n_clusters=n_states,
@@ -204,6 +202,8 @@ def consensus_batch(stab_maps_list, dwell_time_list, n_replications, n_states=10
         )
 
         # average stability maps and dwell times across consensus states
+        if verbose:
+            print("Generating consensus stability maps")
         stab_maps_cons, dwell_time_cons = stab_maps(stab_maps_all, states_all,
             n_replications, n_states, dwell_time_all)
 
