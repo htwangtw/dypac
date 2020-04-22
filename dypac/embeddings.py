@@ -40,34 +40,38 @@ class Embedding:
             matrix projection from embedding to original space.
         """
         self.size = dypac.components_.shape[0]
-        # the inverse transform is a simple linear mixture
+        # Once we have the embedded representation beta, the inverse transform
+        # is a simple linear mixture:
         # Y_hat = beta * X
-        # We store X as the inverse transform matrix, possibly adding a constant
+        # We store X as the inverse transform matrix
         if add_constant && miss_constant(X):
             self.inv_transform_mat = np.concat(np.ones([1, X.shape[1]]), X)
         else
             self.inv_transform_mat = X
-        # The embedded representation is:
-        # beta = Y * P
-        # where P is defined in the function `projector`
+        # The embedded representation beta is also derived by a simple linear
+        # mixture Y * P, where P is defined in `projector`
+        # We store P as our transform matrix
         self.transform_mat = projector(self.inv_transform_mat)
 
     def transform(self, data):
         """Project data in embedding space."""
+        # Given Y, we get
         # beta = Y * P
         return np.matmul(data, self.transform_mat)
 
     def inv_transform(self, embedded_data):
         """Project embedded data back to original space."""
+        # Given beta, we get:
         # Y_hat = beta * X
         return np.matmul(embedded_data, self.inv_transform_mat)
 
     def compression(self, data):
         """embedding compression of data in original space."""
+        # Given Y, by combining transform and inverse_transform, we get:
         # Y_hat = Y * P * X
         return self.inv_transform(self.transform(data))
 
     def score(self, data):
         """Average residual squares after compression in embedding space."""
-        # || Y - Y_hat ||^2
+        # Given Y, compute || Y - Y_hat ||^2
         return np.sum(np.square(data - self.transform(data)))
