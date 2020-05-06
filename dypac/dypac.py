@@ -19,7 +19,7 @@ from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 
-import bascpp as bpp
+import dypac.bascpp as bpp
 
 
 class dypac(BaseDecomposition):

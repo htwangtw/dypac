@@ -44,9 +44,9 @@ class Embedding:
         # is a simple linear mixture:
         # Y_hat = beta * X
         # We store X as the inverse transform matrix
-        if add_constant && miss_constant(X):
+        if add_constant and miss_constant(X):
             self.inv_transform_mat = np.concat(np.ones([1, X.shape[1]]), X)
-        else
+        else:
             self.inv_transform_mat = X
         # The embedded representation beta is also derived by a simple linear
         # mixture Y * P, where P is defined in `projector`
