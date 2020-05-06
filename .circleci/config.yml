@@ -14,7 +14,7 @@ jobs:
           command: |
             pip install --progress-bar off -r requirements.txt
             pip install --progress-bar off pytest coverage
-            pip install --progress-bar off -e dypac/
+            pip install --progress-bar off -e .
       - run:
           command: |
             coverage run --source bascpp,dypac -m pytest dypac/tests/test_bascpp.py dypac/tests/test_dypac.py
