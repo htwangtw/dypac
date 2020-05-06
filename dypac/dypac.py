@@ -199,7 +199,6 @@ class dypac(BaseDecomposition):
                 "been called."
             )
 
-
     def fit(self, imgs, confounds=None):
         """
         Compute the mask and the dynamic parcels across datasets.
@@ -259,11 +258,15 @@ class dypac(BaseDecomposition):
 
         # Check that number of batches is reasonable
         if self.n_batch > len(imgs):
-            warnings.warn("{0} batches were requested, but only {1} datasets available. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
+            warnings.warn(
+                "{0} batches were requested, but only {1} datasets available. Using one dataset per batch instead.".format(
+                    self.n_batch, len(imgs)
+                )
+            )
             self.n_batch = len(imgs)
 
         # mask_and_reduce step
-        if (self.n_batch > 1):
+        if self.n_batch > 1:
             stab_maps, dwell_time = self._mask_and_reduce_batch(imgs, confounds)
         else:
             stab_maps, dwell_time = self._mask_and_reduce(imgs, confounds)
@@ -273,7 +276,6 @@ class dypac(BaseDecomposition):
         self.dwell_time_ = dwell_time
         return self
 
-
     def _mask_and_reduce_batch(self, imgs, confounds=None):
         """Iterate dypac on batches of files."""
         stab_maps_list = []
@@ -282,14 +284,23 @@ class dypac(BaseDecomposition):
             slice_batch = slice(bb, len(imgs), self.n_batch)
             if self.verbose:
                 print("[{0}] Processing batch {1}".format(self.__class__.__name__, bb))
-            stab_maps, dwell_time = self._mask_and_reduce(imgs[slice_batch], confounds[slice_batch])
+            stab_maps, dwell_time = self._mask_and_reduce(
+                imgs[slice_batch], confounds[slice_batch]
+            )
             stab_maps_list.append(stab_maps)
             dwell_time_list.append(dwell_time)
 
-        n_init=self.n_init_aggregation,
-        stab_maps_cons, dwell_time_cons = bpp.consensus_batch(stab_maps_list,
-            dwell_time_list, self.n_replications, self.n_states, self.max_iter,
-            self.n_init_aggregation, self.random_state, self.verbose)
+        n_init = (self.n_init_aggregation,)
+        stab_maps_cons, dwell_time_cons = bpp.consensus_batch(
+            stab_maps_list,
+            dwell_time_list,
+            self.n_replications,
+            self.n_states,
+            self.max_iter,
+            self.n_init_aggregation,
+            self.random_state,
+            self.verbose,
+        )
 
         return stab_maps_cons, dwell_time_cons
 
