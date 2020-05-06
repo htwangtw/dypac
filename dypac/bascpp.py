@@ -65,7 +65,9 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
         ix, iy, _ = find(onehot[states == ss, :])
         size_onehot = np.array(onehot[states == ss, :].sum(axis=1)).flatten()
         ref_cluster = np.array(onehot[states == ss, :].mean(dtype="float", axis=0))
-        avg_stab = np.divide(np.bincount(ix, weights=ref_cluster[0,iy].flatten()), size_onehot)
+        avg_stab = np.divide(
+            np.bincount(ix, weights=ref_cluster[0, iy].flatten()), size_onehot
+        )
         tmp = states[states == ss]
         tmp[avg_stab < threshold_sim] = n_states
         states[states == ss] = tmp
@@ -73,7 +75,17 @@ def _trim_states(onehot, states, n_states, verbose, threshold_sim):
 
 
 def replicate_clusters(
-    y, subsample_size, n_clusters, n_replications, max_iter=100, n_init=10, random_state=None, verbose=False, embedding=np.array([]), desc="", normalize=False
+    y,
+    subsample_size,
+    n_clusters,
+    n_replications,
+    max_iter=100,
+    n_init=10,
+    random_state=None,
+    verbose=False,
+    embedding=np.array([]),
+    desc="",
+    normalize=False,
 ):
     """Replicate a clustering on random subsamples
 
@@ -111,20 +123,25 @@ def replicate_clusters(
         onehot representation of clusters, stacked over all replications.
     """
     list_start = _start_window(y.shape[1], n_replications, subsample_size)
-    if (list_start.shape[0] < n_replications):
-        warnings.warn("{0} replications were requested, but only {1} available.".format(n_replications, list_start.shape[0]))
+    if list_start.shape[0] < n_replications:
+        warnings.warn(
+            "{0} replications were requested, but only {1} available.".format(
+                n_replications, list_start.shape[0]
+            )
+        )
     range_replication = range(list_start.shape[0])
     part = np.zeros([list_start.shape[0], y.shape[0]], dtype="int")
 
     for rr in tqdm(range_replication, disable=not verbose, desc=desc):
         if normalize:
-            samp = scale(_select_subsample(y, subsample_size, list_start[rr]),
-                         axis=1)
+            samp = scale(_select_subsample(y, subsample_size, list_start[rr]), axis=1)
         else:
             samp = _select_subsample(y, subsample_size, list_start[rr])
         if embedding.shape[0] > 0:
-            samp = np.concatenate([_select_subsample(y, subsample_size,
-                                  list_start[rr]), embedding], axis=1)
+            samp = np.concatenate(
+                [_select_subsample(y, subsample_size, list_start[rr]), embedding],
+                axis=1,
+            )
         _, part[rr, :], _ = k_means(
             samp,
             n_clusters=n_clusters,
@@ -136,7 +153,15 @@ def replicate_clusters(
     return _part2onehot(part, n_clusters)
 
 
-def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_init=10, random_state=None, verbose=False):
+def find_states(
+    onehot,
+    n_states=10,
+    max_iter=30,
+    threshold_sim=0.3,
+    n_init=10,
+    random_state=None,
+    verbose=False,
+):
     """Find dynamic states based on the similarity of clusters over time."""
     if verbose:
         print("Consensus clustering.")
@@ -177,33 +202,45 @@ def stab_maps(onehot, states, n_replications, n_states, dwell_time_all=None):
             row_ind.append(np.repeat(idx, np.sum(mask)))
             col_ind.append(np.nonzero(mask)[1])
             val.append(np.array(stab_map[mask]).flatten())
-    stab_maps = csr_matrix((np.concatenate(val), (np.concatenate(row_ind),
-        np.concatenate(col_ind))), shape=[n_states, onehot.shape[1]])
+    stab_maps = csr_matrix(
+        (np.concatenate(val), (np.concatenate(row_ind), np.concatenate(col_ind))),
+        shape=[n_states, onehot.shape[1]],
+    )
 
     return stab_maps, dwell_time
 
 
-def consensus_batch(stab_maps_list, dwell_time_list, n_replications, n_states=10, max_iter=30, n_init=10, random_state=None, verbose=False):
-        stab_maps_all = vstack(stab_maps_list)
-        del stab_maps_list
-        dwell_time_all = np.concatenate(dwell_time_list)
-        del dwell_time_list
+def consensus_batch(
+    stab_maps_list,
+    dwell_time_list,
+    n_replications,
+    n_states=10,
+    max_iter=30,
+    n_init=10,
+    random_state=None,
+    verbose=False,
+):
+    stab_maps_all = vstack(stab_maps_list)
+    del stab_maps_list
+    dwell_time_all = np.concatenate(dwell_time_list)
+    del dwell_time_list
 
-        # Consensus clustering step
-        if verbose:
-            print("Inter-batch consensus")
-        _, states_all, _ = k_means(
-            stab_maps_all,
-            n_clusters=n_states,
-            init="k-means++",
-            max_iter=max_iter,
-            random_state=random_state,
-            n_init=n_init,
-        )
+    # Consensus clustering step
+    if verbose:
+        print("Inter-batch consensus")
+    _, states_all, _ = k_means(
+        stab_maps_all,
+        n_clusters=n_states,
+        init="k-means++",
+        max_iter=max_iter,
+        random_state=random_state,
+        n_init=n_init,
+    )
 
-        # average stability maps and dwell times across consensus states
-        if verbose:
-            print("Generating consensus stability maps")
-        stab_maps_cons, dwell_time_cons = stab_maps(stab_maps_all, states_all,
-            n_replications, n_states, dwell_time_all)
-        return stab_maps_cons, dwell_time_cons
+    # average stability maps and dwell times across consensus states
+    if verbose:
+        print("Generating consensus stability maps")
+    stab_maps_cons, dwell_time_cons = stab_maps(
+        stab_maps_all, states_all, n_replications, n_states, dwell_time_all
+    )
+    return stab_maps_cons, dwell_time_cons

@@ -16,6 +16,7 @@ from sklearn.linear_model import LinearRegression
 from nilearn import EXPAND_PATH_WILDCARDS
 from joblib import Memory
 from nilearn._utils.niimg_conversions import _resolve_globbing
+from nilearn.input_data import NiftiMasker
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 
@@ -28,35 +29,35 @@ class dypac(BaseDecomposition):
 
     Parameters
     ----------
-    n_clusters: int
+    n_clusters: int, optional
         Number of clusters to extract per time window
 
-    n_states: int
+    n_states: int, optional
         Number of expected dynamic states
 
-    n_replications: int
+    n_replications: int, optional
         Number of replications of cluster analysis in each fMRI run
 
-    n_batch: int
+    n_batch: int, optional
         Number of batches to run through consensus clustering.
         If n_batch<=1, consensus clustering will be applied
         to all replications in one pass. Processing with batch will
         reduce dramatically the compute time, but will change slightly
         the results.
 
-    n_init: int
+    n_init: int, optional
         Number of initializations for k-means
 
-    subsample_size: int
+    subsample_size: int, optional
         Number of time points in a subsample
 
-    max_iter: int
+    max_iter: int, optional
         Max number of iterations for k-means
 
-    threshold_sim: float (0 <= . <= 1)
+    threshold_sim: float (0 <= . <= 1), optional
         Minimal acceptable average dice in a state
 
-    random_state: int or RandomState
+    random_state: int or RandomState, optional
         Pseudo number generator state used for random sampling.
 
     mask: Niimg-like object or MultiNiftiMasker instance, optional
@@ -64,6 +65,18 @@ class dypac(BaseDecomposition):
         then its mask will be used. If no mask is given,
         it will be computed automatically by a MultiNiftiMasker with default
         parameters.
+
+    grey_matter: Niimg-like object or MultiNiftiMasker instance, optional
+        A voxel-wise estimate of grey matter partial volumes.
+        If provided, this mask is used to give more weight to grey matter in the
+        replications of functional clusters.
+
+    std_grey_matter: float (1 <= .)
+        The standard deviation of voxels will be adjusted to
+        std_grey_matter, proportionally to the estimated proportion of grey
+        matter in this voxel (see grey_matter). Note that other voxels' time
+        series have a standard deviation of 1. If the grey_matter segmentation
+        is not provided, no adjustment is made.
 
     smoothing_fwhm: float, optional
         If smoothing_fwhm is not None, it gives the size in millimeters of the
@@ -146,6 +159,8 @@ class dypac(BaseDecomposition):
         threshold_sim=0.3,
         random_state=None,
         mask=None,
+        grey_matter=None,
+        std_grey_matter=1,
         smoothing_fwhm=None,
         standardize=True,
         detrend=True,
@@ -164,7 +179,8 @@ class dypac(BaseDecomposition):
         # All those settings are taken from nilearn BaseDecomposition
         self.random_state = random_state
         self.mask = mask
-
+        self.grey_matter = grey_matter
+        self.std_grey_matter = std_grey_matter
         self.smoothing_fwhm = smoothing_fwhm
         self.standardize = standardize
         self.detrend = detrend
@@ -198,7 +214,6 @@ class dypac(BaseDecomposition):
                 "This is probably because fit has not "
                 "been called."
             )
-
 
     def fit(self, imgs, confounds=None):
         """
@@ -250,6 +265,19 @@ class dypac(BaseDecomposition):
             self.masker_.fit()
         self.mask_img_ = self.masker_.mask_img_
 
+        # Load grey_matter segmentation
+        if self.grey_matter is not None:
+            masker_anat = NiftiMasker(
+                mask_img=self.mask_img_, smoothing_fwhm=self.smoothing_fwhm
+            )
+            masker_anat.fit(self.grey_matter)
+            grey_matter = masker_anat.transform(self.grey_matter)
+            self.weights_grey_matter_ = (
+                1 - grey_matter
+            ) + self.std_grey_matter * grey_matter
+        else:
+            self.grey_matter_ = None
+
         # if no confounds have been specified, match length of imgs
         if confounds is None:
             confounds = list(itertools.repeat(confounds, len(imgs)))
@@ -259,11 +287,15 @@ class dypac(BaseDecomposition):
 
         # Check that number of batches is reasonable
         if self.n_batch > len(imgs):
-            warnings.warn("{0} batches were requested, but only {1} datasets available. Using one dataset per batch instead.".format(self.n_batch, len(imgs)))
+            warnings.warn(
+                "{0} batches were requested, but only {1} datasets available. Using one dataset per batch instead.".format(
+                    self.n_batch, len(imgs)
+                )
+            )
             self.n_batch = len(imgs)
 
         # mask_and_reduce step
-        if (self.n_batch > 1):
+        if self.n_batch > 1:
             stab_maps, dwell_time = self._mask_and_reduce_batch(imgs, confounds)
         else:
             stab_maps, dwell_time = self._mask_and_reduce(imgs, confounds)
@@ -273,7 +305,6 @@ class dypac(BaseDecomposition):
         self.dwell_time_ = dwell_time
         return self
 
-
     def _mask_and_reduce_batch(self, imgs, confounds=None):
         """Iterate dypac on batches of files."""
         stab_maps_list = []
@@ -282,14 +313,23 @@ class dypac(BaseDecomposition):
             slice_batch = slice(bb, len(imgs), self.n_batch)
             if self.verbose:
                 print("[{0}] Processing batch {1}".format(self.__class__.__name__, bb))
-            stab_maps, dwell_time = self._mask_and_reduce(imgs[slice_batch], confounds[slice_batch])
+            stab_maps, dwell_time = self._mask_and_reduce(
+                imgs[slice_batch], confounds[slice_batch]
+            )
             stab_maps_list.append(stab_maps)
             dwell_time_list.append(dwell_time)
 
-        n_init=self.n_init_aggregation,
-        stab_maps_cons, dwell_time_cons = bpp.consensus_batch(stab_maps_list,
-            dwell_time_list, self.n_replications, self.n_states, self.max_iter,
-            self.n_init_aggregation, self.random_state, self.verbose)
+        n_init = (self.n_init_aggregation,)
+        stab_maps_cons, dwell_time_cons = bpp.consensus_batch(
+            stab_maps_list,
+            dwell_time_list,
+            self.n_replications,
+            self.n_states,
+            self.max_iter,
+            self.n_init_aggregation,
+            self.random_state,
+            self.verbose,
+        )
 
         return stab_maps_cons, dwell_time_cons
 
@@ -312,7 +352,10 @@ class dypac(BaseDecomposition):
             # Now get rid of the img as fast as possible, to free a
             # reference count on it, and possibly free the corresponding
             # data
+            this_data = np.multiply(this_data, self.weights_grey_matter_)
             del img
+            # Scale grey matter voxels to give them more weight in the
+            # classification
             onehot = bpp.replicate_clusters(
                 this_data.transpose(),
                 subsample_size=self.subsample_size,
