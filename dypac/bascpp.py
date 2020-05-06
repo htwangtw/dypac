@@ -152,15 +152,15 @@ def find_states(onehot, n_states=10, max_iter=30, threshold_sim=0.3, n_init=10, 
     return states
 
 
-def stab_maps(onehot, states, n_replications, n_states, weights=None):
+def stab_maps(onehot, states, n_replications, n_states, dwell_time_all=None):
     """Generate stability maps associated with different states."""
     # Dwell times
     dwell_time = np.zeros(n_states)
     for ss in range(0, n_states):
-        if np.any(weights == None):
+        if np.any(dwell_time_all == None):
             dwell_time[ss] = np.sum(states == ss) / n_replications
         else:
-            dwell_time[ss] = np.mean(weights[states == ss])
+            dwell_time[ss] = np.mean(dwell_time_all[states == ss])
     # Re-order stab maps by descending dwell time
     indsort = np.argsort(-dwell_time)
     dwell_time = dwell_time[indsort]
@@ -169,12 +169,12 @@ def stab_maps(onehot, states, n_replications, n_states, weights=None):
     row_ind = []
     col_ind = []
     val = []
-    for ss in range(0, n_states):
+    for idx, ss in enumerate(indsort):
         if np.any(states == ss):
             stab_map = onehot[states == ss, :].mean(dtype="float", axis=0)
             mask = stab_map > 0
 
-            row_ind.append(np.repeat(indsort[ss], np.sum(mask)))
+            row_ind.append(np.repeat(idx, np.sum(mask)))
             col_ind.append(np.nonzero(mask)[1])
             val.append(np.array(stab_map[mask]).flatten())
     stab_maps = csr_matrix((np.concatenate(val), (np.concatenate(row_ind),
@@ -206,5 +206,4 @@ def consensus_batch(stab_maps_list, dwell_time_list, n_replications, n_states=10
             print("Generating consensus stability maps")
         stab_maps_cons, dwell_time_cons = stab_maps(stab_maps_all, states_all,
             n_replications, n_states, dwell_time_all)
-
         return stab_maps_cons, dwell_time_cons
