@@ -15,6 +15,7 @@ from sklearn.linear_model import LinearRegression
 
 from nilearn import EXPAND_PATH_WILDCARDS
 from joblib import Memory
+from nilearn import datasets
 from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data import NiftiMasker
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
