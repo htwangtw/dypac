@@ -26,6 +26,7 @@ setup(
         "matplotlib",
         "sklearn",
         "nilearn",
+        "tqdm"
     ],  # external packages as dependencies
     classifiers=[
         "Development Status :: 3 - Alpha",
