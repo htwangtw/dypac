@@ -1,5 +1,5 @@
 import numpy as np
-import bascpp as bpp
+import dypac.bascpp as bpp
 
 
 def simu_tseries(n_time, n_roi, n_clusters, alpha):

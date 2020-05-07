@@ -15,15 +15,17 @@ from sklearn.linear_model import LinearRegression
 
 from nilearn import EXPAND_PATH_WILDCARDS
 from joblib import Memory
+from nilearn import datasets
 from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data import NiftiMasker
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 
-import bascpp as bpp
+import dypac.bascpp as bpp
+from dypac.embeddings import Embedding
 
 
-class dypac(BaseDecomposition):
+class Dypac(BaseDecomposition):
     """
     Perform Stable Dynamic Cluster Analysis.
 
@@ -69,7 +71,10 @@ class dypac(BaseDecomposition):
     grey_matter: Niimg-like object or MultiNiftiMasker instance, optional
         A voxel-wise estimate of grey matter partial volumes.
         If provided, this mask is used to give more weight to grey matter in the
-        replications of functional clusters.
+        replications of functional clusters. Use None to skip.
+        By default, uses the ICBM152_2009 probabilistic grey matter segmentation.
+        Note that the segmentation will be smoothed with the same kernel as the
+        functional images.
 
     std_grey_matter: float (1 <= .)
         The standard deviation of voxels will be adjusted to
@@ -159,8 +164,8 @@ class dypac(BaseDecomposition):
         threshold_sim=0.3,
         random_state=None,
         mask=None,
-        grey_matter=None,
-        std_grey_matter=1,
+        grey_matter="MNI",
+        std_grey_matter=3,
         smoothing_fwhm=None,
         standardize=True,
         detrend=True,
@@ -215,6 +220,32 @@ class dypac(BaseDecomposition):
                 "been called."
             )
 
+    def _sanitize_imgs(self, imgs, confounds):
+        """Check that provided images are in the correct format."""
+        # Base fit for decomposition estimators : compute the embedded masker
+        if isinstance(imgs, str):
+            if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
+                imgs = _resolve_globbing(imgs)
+
+        if isinstance(imgs, str) or not hasattr(imgs, "__iter__"):
+            # these classes are meant for list of 4D images
+            # (multi-subject), we want it to work also on a single
+            # subject, so we hack it.
+            imgs = [imgs]
+
+        if len(imgs) == 0:
+            # Common error that arises from a null glob. Capture
+            # it early and raise a helpful message
+            raise ValueError(
+                "Need one or more Niimg-like objects as input, "
+                "an empty list was given."
+            )
+
+        # if no confounds have been specified, match length of imgs
+        if confounds is None:
+            confounds = list(itertools.repeat(confounds, len(imgs)))
+        return imgs, confounds
+
     def fit(self, imgs, confounds=None):
         """
         Compute the mask and the dynamic parcels across datasets.
@@ -237,25 +268,8 @@ class dypac(BaseDecomposition):
             Returns the instance itself. Contains attributes listed
             at the object level.
         """
-        # Base fit for decomposition estimators : compute the embedded masker
-        if isinstance(imgs, str):
-            if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
-                imgs = _resolve_globbing(imgs)
-
-        if isinstance(imgs, str) or not hasattr(imgs, "__iter__"):
-            # these classes are meant for list of 4D images
-            # (multi-subject), we want it to work also on a single
-            # subject, so we hack it.
-            imgs = [imgs]
-
-        if len(imgs) == 0:
-            # Common error that arises from a null glob. Capture
-            # it early and raise a helpful message
-            raise ValueError(
-                "Need one or more Niimg-like objects as input, "
-                "an empty list was given."
-            )
         self.masker_ = check_embedded_nifti_masker(self)
+        imgs, confounds = self._sanitize_imgs(imgs, confounds)
 
         # Avoid warning with imgs != None
         # if masker_ has been provided a mask_img
@@ -266,6 +280,10 @@ class dypac(BaseDecomposition):
         self.mask_img_ = self.masker_.mask_img_
 
         # Load grey_matter segmentation
+        if self.grey_matter == "MNI":
+            mni = datasets.fetch_icbm152_2009()
+            self.grey_matter = mni.gm
+
         if self.grey_matter is not None:
             masker_anat = NiftiMasker(
                 mask_img=self.mask_img_, smoothing_fwhm=self.smoothing_fwhm
@@ -276,11 +294,7 @@ class dypac(BaseDecomposition):
                 1 - grey_matter
             ) + self.std_grey_matter * grey_matter
         else:
-            self.grey_matter_ = None
-
-        # if no confounds have been specified, match length of imgs
-        if confounds is None:
-            confounds = list(itertools.repeat(confounds, len(imgs)))
+            self.weights_grey_matter_ = None
 
         # Control random number generation
         self.random_state = check_random_state(self.random_state)
@@ -303,6 +317,9 @@ class dypac(BaseDecomposition):
         # Return components
         self.components_ = stab_maps
         self.dwell_time_ = dwell_time
+
+        # Create embedding
+        self.embedding = Embedding(stab_maps.todense())
         return self
 
     def _mask_and_reduce_batch(self, imgs, confounds=None):
@@ -345,17 +362,17 @@ class dypac(BaseDecomposition):
         dwell_time: ndarray
             dwell time of each state.
         """
-
         onehot_list = []
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
             this_data = self.masker_.transform(img, confound)
             # Now get rid of the img as fast as possible, to free a
             # reference count on it, and possibly free the corresponding
             # data
-            this_data = np.multiply(this_data, self.weights_grey_matter_)
             del img
             # Scale grey matter voxels to give them more weight in the
             # classification
+            if self.weights_grey_matter_ is not None:
+                this_data = np.multiply(this_data, self.weights_grey_matter_)
             onehot = bpp.replicate_clusters(
                 this_data.transpose(),
                 subsample_size=self.subsample_size,
@@ -390,17 +407,116 @@ class dypac(BaseDecomposition):
 
         return stab_maps, dwell_time
 
-    def transform_sparse(self, img, confound=None):
-        """Transform a 4D dataset in a component space."""
-        self._check_components_()
-        this_data = self.masker_.transform(img, confound)
-        del img
-        reg = LinearRegression().fit(
-            self.components_.transpose(), this_data.transpose()
-        )
-        return reg.coef_
+    def load_img(self, img, confound=None):
+        """
+        Load a 4D image using the same preprocessing as model fitting.
 
-    def inverse_transform_sparse(self, weights):
-        """Transform component weights as a 4D dataset."""
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+
+        Returns
+        -------
+        img_p : Niimg-like object.
+            Same as input, after the preprocessing step used in the model have
+            been applied.
+        """
         self._check_components_()
-        self.masker_.inverse_transform(weights * self.components_)
+        tseries = self.masker_.transform(img, confound)
+        return self.masker_.inverse_transform(tseries)
+
+    def transform(self, img, confound=None):
+        """
+        Transform a 4D dataset in a component space.
+
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+        confound : CSV file or 2D matrix, optional.
+            Confound parameters, to be passed to nilearn.signal.clean.
+
+        Returns
+        -------
+        weights : numpy array of shape [n_samples, n_states + 1]
+            The fMRI tseries after projection in the parcellation
+            space. Note that the first coefficient corresponds to the intercept,
+            and not one of the parcels.
+        """
+        self._check_components_()
+        tseries = self.masker_.transform(img, confound)
+        del img
+        return self.embedding.transform(tseries)
+
+    def inverse_transform(self, weights):
+        """
+        Transform component weights as a 4D dataset.
+
+        Parameters
+        ----------
+        weights : numpy array of shape [n_samples, n_states + 1]
+            The fMRI tseries after projection in the parcellation
+            space. Note that the first coefficient corresponds to the intercept,
+            and not one of the parcels.
+
+        Returns
+        -------
+        img : Niimg-like object.
+            The 4D fMRI dataset corresponding to the weights.
+        """
+        self._check_components_()
+        return self.masker_.inverse_transform(self.embedding.inverse_transform(weights))
+
+    def compress(self, img, confound=None):
+        """
+        Provide the approximation of a 4D dataset after projection in parcellation space.
+
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+        confound : CSV file or 2D matrix, optional.
+            Confound parameters, to be passed to nilearn.signal.clean.
+
+        Returns
+        -------
+        img_c : Niimg-like object.
+            The 4D fMRI dataset corresponding to the input, compressed in the parcel space.
+        """
+        self._check_components_()
+        tseries = self.masker_.transform(img, confound)
+        del img
+        return self.masker_.inverse_transform(self.embedding.compress(tseries))
+
+    def score(self, img, confound=None):
+        """
+        R2 map of the quality of the compression.
+
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+        confound : CSV file or 2D matrix, optional.
+            Confound parameters, to be passed to nilearn.signal.clean.
+
+        Returns
+        -------
+        score : Niimg-like object.
+            A 3D map of R2 score of the quality of the compression.
+
+        Note
+        ----
+        The R2 score map is the fraction of the variance of fMRI time series captured
+        by the parcels at each voxel. A score of 1 means perfect approximation.
+        The score can be negative, in which case the parcellation approximation
+        performs worst than the average of the signal.
+        """
+        self._check_components_()
+        tseries = self.masker_.transform(img, confound)
+        del img
+        return self.masker_.inverse_transform(self.embedding.score(tseries))

@@ -4,8 +4,8 @@ from nibabel import Nifti1Image
 
 from nilearn.image import new_img_like
 
-import dypac as dp
-from test_bascpp import simu_tseries
+from dypac import Dypac
+from dypac.tests.test_bascpp import simu_tseries
 
 def test_fit():
     # Generate a single state with obvious structure
@@ -20,7 +20,7 @@ def test_fit():
     n_replications = 10
     n_clusters = 3
     n_states = 3
-    model = dp.dypac(n_clusters=n_clusters, n_states=3, n_replications=n_replications, mask=mask)
+    model = Dypac(n_clusters=n_clusters, n_states=3, n_replications=n_replications, mask=mask)
     model.fit(img)
     print(model.components_.shape)
 
