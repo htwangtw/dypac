@@ -20,9 +20,9 @@ from nilearn.input_data.masker_validation import check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 
 import dypac.bascpp as bpp
+from dypac.embeddings import Embedding
 
-
-class dypac(BaseDecomposition):
+class Dypac(BaseDecomposition):
     """
     Perform Stable Dynamic Cluster Analysis.
 
@@ -271,6 +271,9 @@ class dypac(BaseDecomposition):
         # Return components
         self.components_ = stab_maps
         self.dwell_time_ = dwell_time
+
+        # Create embedding
+        self.embedding = Embedding(stab_maps)
         return self
 
 
@@ -347,17 +350,27 @@ class dypac(BaseDecomposition):
 
         return stab_maps, dwell_time
 
-    def transform_sparse(self, img, confound=None):
+    def transform(self, img, confound=None):
         """Transform a 4D dataset in a component space."""
         self._check_components_()
-        this_data = self.masker_.transform(img, confound)
+        tseries = self.masker_.transform(img, confound)
         del img
-        reg = LinearRegression().fit(
-            self.components_.transpose(), this_data.transpose()
-        )
-        return reg.coef_
+        return self.embedding.transform(tseries)
 
-    def inverse_transform_sparse(self, weights):
+    def inverse_transform(self, weights):
         """Transform component weights as a 4D dataset."""
         self._check_components_()
-        self.masker_.inverse_transform(weights * self.components_)
+        return self.masker_.inverse_transform(self.embedding.inverse_transform(weights))
+
+    def compress(self, img, confound=None):
+        """Transform component weights as a 4D dataset."""
+        self._check_components_()
+        tseries = self.masker_.transform(img, confound)
+        del img
+        return self.masker_.inverse_transform(self.embedding.compress(tseries))
+
+    def score(self, img, confound=None):
+        self._check_components_()
+        tseries = self.masker_.transform(img, confound)
+        del img
+        return self.masker_.inverse_transform(self.embedding.score(tseries))
