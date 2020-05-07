@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
+
 def projector(X):
     """Ordinary least-square projection."""
     # when solving Y = beta * X + E, for beta minimizing sum of E squares,
@@ -76,4 +77,4 @@ class Embedding:
         """Average residual squares after compress in embedding space."""
         # The R2 score is only interpretable for standardized data
         data = StandardScaler().fit_transform(data)
-        return 1-np.var(data - self.compress(data), axis=0)
+        return 1 - np.var(data - self.compress(data), axis=0)

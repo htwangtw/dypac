@@ -23,6 +23,7 @@ from nilearn.decomposition.base import BaseDecomposition
 import dypac.bascpp as bpp
 from dypac.embeddings import Embedding
 
+
 class Dypac(BaseDecomposition):
     """
     Perform Stable Dynamic Cluster Analysis.
@@ -215,6 +216,32 @@ class Dypac(BaseDecomposition):
                 "been called."
             )
 
+    def _sanitize_imgs(self, imgs, confounds):
+        """Check that provided images are in the correct format."""
+        # Base fit for decomposition estimators : compute the embedded masker
+        if isinstance(imgs, str):
+            if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
+                imgs = _resolve_globbing(imgs)
+
+        if isinstance(imgs, str) or not hasattr(imgs, "__iter__"):
+            # these classes are meant for list of 4D images
+            # (multi-subject), we want it to work also on a single
+            # subject, so we hack it.
+            imgs = [imgs]
+
+        if len(imgs) == 0:
+            # Common error that arises from a null glob. Capture
+            # it early and raise a helpful message
+            raise ValueError(
+                "Need one or more Niimg-like objects as input, "
+                "an empty list was given."
+            )
+
+        # if no confounds have been specified, match length of imgs
+        if confounds is None:
+            confounds = list(itertools.repeat(confounds, len(imgs)))
+        return imgs, confounds
+
     def fit(self, imgs, confounds=None):
         """
         Compute the mask and the dynamic parcels across datasets.
@@ -237,25 +264,8 @@ class Dypac(BaseDecomposition):
             Returns the instance itself. Contains attributes listed
             at the object level.
         """
-        # Base fit for decomposition estimators : compute the embedded masker
-        if isinstance(imgs, str):
-            if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
-                imgs = _resolve_globbing(imgs)
-
-        if isinstance(imgs, str) or not hasattr(imgs, "__iter__"):
-            # these classes are meant for list of 4D images
-            # (multi-subject), we want it to work also on a single
-            # subject, so we hack it.
-            imgs = [imgs]
-
-        if len(imgs) == 0:
-            # Common error that arises from a null glob. Capture
-            # it early and raise a helpful message
-            raise ValueError(
-                "Need one or more Niimg-like objects as input, "
-                "an empty list was given."
-            )
         self.masker_ = check_embedded_nifti_masker(self)
+        imgs, confounds = self._sanitize_imgs(imgs, confounds)
 
         # Avoid warning with imgs != None
         # if masker_ has been provided a mask_img
@@ -276,11 +286,7 @@ class Dypac(BaseDecomposition):
                 1 - grey_matter
             ) + self.std_grey_matter * grey_matter
         else:
-            self.grey_matter_ = None
-
-        # if no confounds have been specified, match length of imgs
-        if confounds is None:
-            confounds = list(itertools.repeat(confounds, len(imgs)))
+            self.weights_grey_matter_ = None
 
         # Control random number generation
         self.random_state = check_random_state(self.random_state)
@@ -305,7 +311,7 @@ class Dypac(BaseDecomposition):
         self.dwell_time_ = dwell_time
 
         # Create embedding
-        self.embedding = Embedding(stab_maps)
+        self.embedding = Embedding(stab_maps.todense())
         return self
 
     def _mask_and_reduce_batch(self, imgs, confounds=None):
@@ -348,17 +354,17 @@ class Dypac(BaseDecomposition):
         dwell_time: ndarray
             dwell time of each state.
         """
-
         onehot_list = []
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
             this_data = self.masker_.transform(img, confound)
             # Now get rid of the img as fast as possible, to free a
             # reference count on it, and possibly free the corresponding
             # data
-            this_data = np.multiply(this_data, self.weights_grey_matter_)
             del img
             # Scale grey matter voxels to give them more weight in the
             # classification
+            if self.weights_grey_matter_ is not None:
+                this_data = np.multiply(this_data, self.weights_grey_matter_)
             onehot = bpp.replicate_clusters(
                 this_data.transpose(),
                 subsample_size=self.subsample_size,
@@ -393,6 +399,12 @@ class Dypac(BaseDecomposition):
 
         return stab_maps, dwell_time
 
+    def load_img(self, img, confound=None):
+        """Load a 4D image using the same preprocessing as model fitting."""
+        self._check_components_()
+        tseries = self.masker_.transform(img, confound)
+        return self.masker_.inverse_transform(tseries)
+
     def transform(self, img, confound=None):
         """Transform a 4D dataset in a component space."""
         self._check_components_()
@@ -413,6 +425,7 @@ class Dypac(BaseDecomposition):
         return self.masker_.inverse_transform(self.embedding.compress(tseries))
 
     def score(self, img, confound=None):
+        """R2 map of the quality of the compression."""
         self._check_components_()
         tseries = self.masker_.transform(img, confound)
         del img
