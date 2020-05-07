@@ -68,7 +68,7 @@ class Embedding:
         return np.matmul(embedded_data, self.inverse_transform_mat)
 
     def compress(self, data):
-        """embedding compression of data in original space."""
+        """Embedding compression of data in original space."""
         # Given Y, by combining transform and inverse_transform, we get:
         # Y_hat = Y * P * X
         return self.inverse_transform(self.transform(data))

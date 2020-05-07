@@ -400,32 +400,114 @@ class Dypac(BaseDecomposition):
         return stab_maps, dwell_time
 
     def load_img(self, img, confound=None):
-        """Load a 4D image using the same preprocessing as model fitting."""
+        """
+        Load a 4D image using the same preprocessing as model fitting.
+
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+
+        Returns
+        -------
+        img_p : Niimg-like object.
+            Same as input, after the preprocessing step used in the model have
+            been applied.
+        """
         self._check_components_()
         tseries = self.masker_.transform(img, confound)
         return self.masker_.inverse_transform(tseries)
 
     def transform(self, img, confound=None):
-        """Transform a 4D dataset in a component space."""
+        """
+        Transform a 4D dataset in a component space.
+
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+        confound : CSV file or 2D matrix, optional.
+            Confound parameters, to be passed to nilearn.signal.clean.
+
+        Returns
+        -------
+        weights : numpy array of shape [n_samples, n_states + 1]
+            The fMRI tseries after projection in the parcellation
+            space. Note that the first coefficient corresponds to the intercept,
+            and not one of the parcels.
+        """
         self._check_components_()
         tseries = self.masker_.transform(img, confound)
         del img
         return self.embedding.transform(tseries)
 
     def inverse_transform(self, weights):
-        """Transform component weights as a 4D dataset."""
+        """
+        Transform component weights as a 4D dataset.
+
+        Parameters
+        ----------
+        weights : numpy array of shape [n_samples, n_states + 1]
+            The fMRI tseries after projection in the parcellation
+            space. Note that the first coefficient corresponds to the intercept,
+            and not one of the parcels.
+
+        Returns
+        -------
+        img : Niimg-like object.
+            The 4D fMRI dataset corresponding to the weights.
+        """
         self._check_components_()
         return self.masker_.inverse_transform(self.embedding.inverse_transform(weights))
 
     def compress(self, img, confound=None):
-        """Transform component weights as a 4D dataset."""
+        """
+        Provide the approximation of a 4D dataset after projection in parcellation space.
+
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+        confound : CSV file or 2D matrix, optional.
+            Confound parameters, to be passed to nilearn.signal.clean.
+
+        Returns
+        -------
+        img_c : Niimg-like object.
+            The 4D fMRI dataset corresponding to the input, compressed in the parcel space.
+        """
         self._check_components_()
         tseries = self.masker_.transform(img, confound)
         del img
         return self.masker_.inverse_transform(self.embedding.compress(tseries))
 
     def score(self, img, confound=None):
-        """R2 map of the quality of the compression."""
+        """
+        R2 map of the quality of the compression.
+
+        Parameters
+        ----------
+        img : Niimg-like object.
+            See http://nilearn.github.io/manipulating_images/input_output.html
+            An fMRI dataset
+        confound : CSV file or 2D matrix, optional.
+            Confound parameters, to be passed to nilearn.signal.clean.
+
+        Returns
+        -------
+        score : Niimg-like object.
+            A 3D map of R2 score of the quality of the compression.
+
+        Note
+        ----
+        The R2 score map is the fraction of the variance of fMRI time series captured
+        by the parcels at each voxel. A score of 1 means perfect approximation.
+        The score can be negative, in which case the parcellation approximation
+        performs worst than the average of the signal. 
+        """
         self._check_components_()
         tseries = self.masker_.transform(img, confound)
         del img
