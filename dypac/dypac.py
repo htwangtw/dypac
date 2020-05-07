@@ -70,7 +70,10 @@ class Dypac(BaseDecomposition):
     grey_matter: Niimg-like object or MultiNiftiMasker instance, optional
         A voxel-wise estimate of grey matter partial volumes.
         If provided, this mask is used to give more weight to grey matter in the
-        replications of functional clusters.
+        replications of functional clusters. Use None to skip.
+        By default, uses the ICBM152_2009 probabilistic grey matter segmentation.
+        Note that the segmentation will be smoothed with the same kernel as the
+        functional images.
 
     std_grey_matter: float (1 <= .)
         The standard deviation of voxels will be adjusted to
@@ -160,8 +163,8 @@ class Dypac(BaseDecomposition):
         threshold_sim=0.3,
         random_state=None,
         mask=None,
-        grey_matter=None,
-        std_grey_matter=1,
+        grey_matter="MNI",
+        std_grey_matter=3,
         smoothing_fwhm=None,
         standardize=True,
         detrend=True,
@@ -276,6 +279,10 @@ class Dypac(BaseDecomposition):
         self.mask_img_ = self.masker_.mask_img_
 
         # Load grey_matter segmentation
+        if self.grey_matter == "MNI":
+            mni = datasets.fetch_icbm152_2009()
+            self.grey_matter = mni.gm
+
         if self.grey_matter is not None:
             masker_anat = NiftiMasker(
                 mask_img=self.mask_img_, smoothing_fwhm=self.smoothing_fwhm
@@ -506,7 +513,7 @@ class Dypac(BaseDecomposition):
         The R2 score map is the fraction of the variance of fMRI time series captured
         by the parcels at each voxel. A score of 1 means perfect approximation.
         The score can be negative, in which case the parcellation approximation
-        performs worst than the average of the signal. 
+        performs worst than the average of the signal.
         """
         self._check_components_()
         tseries = self.masker_.transform(img, confound)
