@@ -3,27 +3,29 @@ import dypac.bascpp as bpp
 
 
 def simu_tseries(n_time, n_roi, n_clusters, alpha):
-    """Simulate time series with a cluster structure for multiple ROIs.
-        Parameters
-        ----------
-        n_time: int
-            number of simulated time points
+    """
+    Simulate time series with a cluster structure for multiple ROIs.
 
-        n_roi: int
-            number of regions per cluster
+    Parameters
+    ----------
+    n_time: int
+        number of simulated time points
 
-        n_clusters: int
-            number of clusters
+    n_roi: int
+        number of regions per cluster
 
-        alpha: scalar, 0 <= . <= 1
-            the std of the cluster signal (noise has a variance of 1)
+    n_clusters: int
+        number of clusters
 
-        Returns
-        -------
-        y: ndarray size n_roi x n_time
-            simulated time series
-        gt: ndarray size n_roi
-            the ground truth partition (cluster I is filled with Is)
+    alpha: scalar, 0 <= . <= 1
+        the std of the cluster signal (noise has a variance of 1)
+
+    Returns
+    -------
+    y: ndarray size n_roi x n_time
+        simulated time series
+    gt: ndarray size n_roi
+        the ground truth partition (cluster I is filled with Is)
     """
     noise = np.random.normal(size=[n_roi , n_time]) # Some Gaussian random noise
     gt = np.zeros(shape=[n_roi,1]) # Ground truth clusters
@@ -69,7 +71,7 @@ def test_stab_maps():
     n_states = 3
     onehot = bpp.replicate_clusters(tseries, subsample_size=30, n_clusters=n_clusters, n_replications=n_replications, max_iter=30, n_init=10)
     states = bpp.find_states(onehot, n_states=n_states)
-    stab_maps, dwell_time = bpp.stab_maps(onehot, states, n_replications, n_states)
+    stab_maps, _ = bpp.stab_maps(onehot, states, n_replications, n_states)
 
     # Check that stab_maps has the right dimensions
     print(stab_maps)

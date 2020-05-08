@@ -9,9 +9,7 @@ import warnings
 from scipy.sparse import vstack
 import numpy as np
 
-from sklearn.cluster import k_means
 from sklearn.utils import check_random_state
-from sklearn.linear_model import LinearRegression
 
 from nilearn import EXPAND_PATH_WILDCARDS
 from joblib import Memory
@@ -23,6 +21,33 @@ from nilearn.decomposition.base import BaseDecomposition
 
 import dypac.bascpp as bpp
 from dypac.embeddings import Embedding
+
+
+def _sanitize_imgs(imgs, confounds):
+    """Check that provided images are in the correct format."""
+    # Base fit for decomposition estimators : compute the embedded masker
+    if isinstance(imgs, str):
+        if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
+            imgs = _resolve_globbing(imgs)
+
+    if isinstance(imgs, str) or not hasattr(imgs, "__iter__"):
+        # these classes are meant for list of 4D images
+        # (multi-subject), we want it to work also on a single
+        # subject, so we hack it.
+        imgs = [imgs]
+
+    if len(imgs) == 0:
+        # Common error that arises from a null glob. Capture
+        # it early and raise a helpful message
+        raise ValueError(
+            "Need one or more Niimg-like objects as input, "
+            "an empty list was given."
+        )
+
+    # if no confounds have been specified, match length of imgs
+    if confounds is None:
+        confounds = list(itertools.repeat(confounds, len(imgs)))
+    return imgs, confounds
 
 
 class Dypac(BaseDecomposition):
@@ -220,31 +245,6 @@ class Dypac(BaseDecomposition):
                 "been called."
             )
 
-    def _sanitize_imgs(self, imgs, confounds):
-        """Check that provided images are in the correct format."""
-        # Base fit for decomposition estimators : compute the embedded masker
-        if isinstance(imgs, str):
-            if EXPAND_PATH_WILDCARDS and glob.has_magic(imgs):
-                imgs = _resolve_globbing(imgs)
-
-        if isinstance(imgs, str) or not hasattr(imgs, "__iter__"):
-            # these classes are meant for list of 4D images
-            # (multi-subject), we want it to work also on a single
-            # subject, so we hack it.
-            imgs = [imgs]
-
-        if len(imgs) == 0:
-            # Common error that arises from a null glob. Capture
-            # it early and raise a helpful message
-            raise ValueError(
-                "Need one or more Niimg-like objects as input, "
-                "an empty list was given."
-            )
-
-        # if no confounds have been specified, match length of imgs
-        if confounds is None:
-            confounds = list(itertools.repeat(confounds, len(imgs)))
-        return imgs, confounds
 
     def fit(self, imgs, confounds=None):
         """
@@ -269,7 +269,7 @@ class Dypac(BaseDecomposition):
             at the object level.
         """
         self.masker_ = check_embedded_nifti_masker(self)
-        imgs, confounds = self._sanitize_imgs(imgs, confounds)
+        imgs, confounds = _sanitize_imgs(imgs, confounds)
 
         # Avoid warning with imgs != None
         # if masker_ has been provided a mask_img
@@ -336,7 +336,6 @@ class Dypac(BaseDecomposition):
             stab_maps_list.append(stab_maps)
             dwell_time_list.append(dwell_time)
 
-        n_init = (self.n_init_aggregation,)
         stab_maps_cons, dwell_time_cons = bpp.consensus_batch(
             stab_maps_list,
             dwell_time_list,
@@ -351,8 +350,7 @@ class Dypac(BaseDecomposition):
         return stab_maps_cons, dwell_time_cons
 
     def _mask_and_reduce(self, imgs, confounds=None):
-        """Uses cluster aggregation over sliding windows to estimate
-        stable dynamic parcels from a list of 4D fMRI datasets.
+        """Cluster aggregation on a list of 4D fMRI datasets.
 
         Returns
         -------
