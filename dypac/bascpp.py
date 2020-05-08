@@ -1,4 +1,5 @@
-"""Bagging analysis of stable clusters (BASC)++.
+"""
+Bagging analysis of stable clusters (BASC)++.
 Scalable and fast ensemble clustering.
 """
 
