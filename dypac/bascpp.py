@@ -1,6 +1,6 @@
 """
-Bagging analysis of stable clusters (BASC)++
-Scalable and fast ensemble clustering
+Bagging analysis of stable clusters (BASC)++.
+Scalable and fast ensemble clustering.
 """
 
 # Authors: Pierre Bellec, Amal Boukhdir
@@ -87,7 +87,8 @@ def replicate_clusters(
     desc="",
     normalize=False,
 ):
-    """Replicate a clustering on random subsamples
+    """
+    Replicate a clustering on random subsamples.
 
     Parameters
     ----------
@@ -97,27 +98,33 @@ def replicate_clusters(
     subsample_size: int
         The size of the subsample used to generate cluster replications
 
+    n_clusters: int
+        The number of clusters to be extracted by k-means.
+
     n_replications: int
         The number of replications
 
-    max_iter: int
+    n_init: int, optional
+            Number of initializations for k-means
+
+    max_iter: int, optional
         Max number of iterations for the k-means algorithm
 
-    verbose: boolean
+    verbose: boolean, optional
         Turn on/off verbose
 
-    embedding: array
+    embedding: array, optional
         if present, the embedding array will be appended to samp for each sample.
         For example, embedding can be a set of spatial coordinates,
         to encourage spatial proximity in the clusters.
 
-    desc: string
+    desc: string, optional
         message to insert in verbose
 
-    normalize: boolean
+    normalize: boolean, optional
         turn on/off scaling of each sample to zero mean and unit variance
 
-    Returts
+    Returns
     -------
     onehot: boolean, sparse array
         onehot representation of clusters, stacked over all replications.
