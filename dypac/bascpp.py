@@ -86,7 +86,8 @@ def replicate_clusters(
     desc="",
     normalize=False,
 ):
-    """Replicate a clustering on random subsamples.
+    """
+    Replicate a clustering on random subsamples.
 
     Parameters
     ----------

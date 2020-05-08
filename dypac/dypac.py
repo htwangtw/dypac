@@ -350,7 +350,8 @@ class Dypac(BaseDecomposition):
         return stab_maps_cons, dwell_time_cons
 
     def _mask_and_reduce(self, imgs, confounds=None):
-        """Cluster aggregation on a list of 4D fMRI datasets.
+        """
+        Cluster aggregation on a list of 4D fMRI datasets.
 
         Returns
         -------
