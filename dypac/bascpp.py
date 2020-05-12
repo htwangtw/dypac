@@ -239,6 +239,7 @@ def consensus_batch(
     _, states_all, _ = k_means(
         stab_maps_all,
         n_clusters=n_states,
+        sample_weight=dwell_time_all,
         init="k-means++",
         max_iter=max_iter,
         random_state=random_state,
