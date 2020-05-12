@@ -30,8 +30,9 @@ def _select_subsample(y, subsample_size, start=None):
 
 
 def _part2onehot(part, n_clusters=0):
-    """Convert a series of partition (one per row) with integer clusters into
-       a series of one-hot encoding vectors (one per row and cluster).
+    """
+    Convert a series of partition (one per row) with integer clusters into
+    a series of one-hot encoding vectors (one per row and cluster).
     """
     if n_clusters == 0:
         n_clusters = np.max(part) + 1
@@ -238,6 +239,7 @@ def consensus_batch(
     _, states_all, _ = k_means(
         stab_maps_all,
         n_clusters=n_states,
+        sample_weight=dwell_time_all,
         init="k-means++",
         max_iter=max_iter,
         random_state=random_state,

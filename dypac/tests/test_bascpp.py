@@ -26,6 +26,7 @@ def simu_tseries(n_time, n_roi, n_clusters, alpha):
         simulated time series
     gt: ndarray size n_roi
         the ground truth partition (cluster I is filled with Is)
+        
     """
     noise = np.random.normal(size=[n_roi, n_time])  # Some Gaussian random noise
     gt = np.zeros(shape=[n_roi, 1])  # Ground truth clusters

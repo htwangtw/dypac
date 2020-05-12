@@ -40,6 +40,7 @@ class Embedding:
 
         inverse_transform_mat: ndarray
             matrix projection from embedding to original space.
+            
         """
         self.size = X.shape[0]
         # Once we have the embedded representation beta, the inverse transform
