@@ -7,6 +7,7 @@ from nilearn.image import new_img_like
 from dypac import Dypac
 from dypac.tests.test_bascpp import simu_tseries
 
+
 def test_fit():
     # Generate a single state with obvious structure
     n_time = 100
@@ -20,7 +21,13 @@ def test_fit():
     n_replications = 10
     n_clusters = 3
     n_states = 3
-    model = Dypac(n_clusters=n_clusters, n_states=3, n_replications=n_replications, mask=mask)
+    model = Dypac(
+        n_clusters=n_clusters,
+        n_states=3,
+        n_replications=n_replications,
+        mask=mask,
+        grey_matter=None,
+    )
     model.fit(img)
     print(model.components_.shape)
 
