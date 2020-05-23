@@ -13,7 +13,7 @@ from sklearn.utils import check_random_state
 
 from nilearn import EXPAND_PATH_WILDCARDS
 from joblib import Memory
-from nilearn import datasets
+from nilearn import datasets, image
 from nilearn._utils.niimg_conversions import _resolve_globbing
 from nilearn.input_data import NiftiMasker
 from nilearn.input_data.masker_validation import check_embedded_nifti_masker
@@ -40,8 +40,7 @@ def _sanitize_imgs(imgs, confounds):
         # Common error that arises from a null glob. Capture
         # it early and raise a helpful message
         raise ValueError(
-            "Need one or more Niimg-like objects as input, "
-            "an empty list was given."
+            "Need one or more Niimg-like objects as input, " "an empty list was given."
         )
 
     # if no confounds have been specified, match length of imgs
@@ -91,22 +90,16 @@ class Dypac(BaseDecomposition):
         Mask to be used on data. If an instance of masker is passed,
         then its mask will be used. If no mask is given,
         it will be computed automatically by a MultiNiftiMasker with default
-        parameters.
+        parameters, or using the grey_matter parameter.
 
     grey_matter: Niimg-like object or MultiNiftiMasker instance, optional
         A voxel-wise estimate of grey matter partial volumes.
-        If provided, this mask is used to give more weight to grey matter in the
-        replications of functional clusters. Use None to skip.
+        If provided, this segmentation is thresholded and used as a mask for the
+        analysis (will overid the mask estimated above). Use None to skip.
         By default, uses the ICBM152_2009 probabilistic grey matter segmentation.
-        Note that the segmentation will be smoothed with the same kernel as the
-        functional images.
 
-    std_grey_matter: float (1 <= .)
-        The standard deviation of voxels will be adjusted to
-        std_grey_matter, proportionally to the estimated proportion of grey
-        matter in this voxel (see grey_matter). Note that other voxels' time
-        series have a standard deviation of 1. If the grey_matter segmentation
-        is not provided, no adjustment is made.
+    threshold_grey_matter: float (0 <= .)
+        The threshold applied on the grey matter segmentation to derive a mask.
 
     smoothing_fwhm: float, optional
         If smoothing_fwhm is not None, it gives the size in millimeters of the
@@ -190,7 +183,7 @@ class Dypac(BaseDecomposition):
         random_state=None,
         mask=None,
         grey_matter="MNI",
-        std_grey_matter=3,
+        threshold_grey_matter=0.1,
         smoothing_fwhm=None,
         standardize=True,
         detrend=True,
@@ -210,7 +203,7 @@ class Dypac(BaseDecomposition):
         self.random_state = random_state
         self.mask = mask
         self.grey_matter = grey_matter
-        self.std_grey_matter = std_grey_matter
+        self.threshold_grey_matter = threshold_grey_matter
         self.smoothing_fwhm = smoothing_fwhm
         self.standardize = standardize
         self.detrend = detrend
@@ -245,7 +238,6 @@ class Dypac(BaseDecomposition):
                 "been called."
             )
 
-
     def fit(self, imgs, confounds=None):
         """
         Compute the mask and the dynamic parcels across datasets.
@@ -268,8 +260,21 @@ class Dypac(BaseDecomposition):
             Returns the instance itself. Contains attributes listed
             at the object level.
         """
-        self.masker_ = check_embedded_nifti_masker(self)
         imgs, confounds = _sanitize_imgs(imgs, confounds)
+
+        # Use grey_matter segmentation as mask, if specified
+        if self.grey_matter == "MNI":
+            if self.verbose:
+                print("[{0}] load specified grey matter mask".format(self.__class__.__name__))
+            mni = datasets.fetch_icbm152_2009()
+            self.grey_matter = mni.gm
+
+        if self.grey_matter is not None:
+            if self.verbose:
+                print("Use the grey matter segmentation as a brain mask")
+            self.mask = self._mask_grey_matter(imgs)
+
+        self.masker_ = check_embedded_nifti_masker(self)
 
         # Avoid warning with imgs != None
         # if masker_ has been provided a mask_img
@@ -279,31 +284,14 @@ class Dypac(BaseDecomposition):
             self.masker_.fit()
         self.mask_img_ = self.masker_.mask_img_
 
-        # Load grey_matter segmentation
-        if self.grey_matter == "MNI":
-            mni = datasets.fetch_icbm152_2009()
-            self.grey_matter = mni.gm
-
-        if self.grey_matter is not None:
-            masker_anat = NiftiMasker(
-                mask_img=self.mask_img_, smoothing_fwhm=self.smoothing_fwhm
-            )
-            masker_anat.fit(self.grey_matter)
-            grey_matter = masker_anat.transform(self.grey_matter)
-            self.weights_grey_matter_ = (
-                1 - grey_matter
-            ) + self.std_grey_matter * grey_matter
-        else:
-            self.weights_grey_matter_ = None
-
         # Control random number generation
         self.random_state = check_random_state(self.random_state)
 
         # Check that number of batches is reasonable
         if self.n_batch > len(imgs):
             warnings.warn(
-                "{0} batches were requested, but only {1} datasets available. Using one dataset per batch instead.".format(
-                    self.n_batch, len(imgs)
+                "{0} batches were requested, but only {1} datasets available. Using {2} batches instead.".format(
+                    self.n_batch, len(imgs), self.n_batch
                 )
             )
             self.n_batch = len(imgs)
@@ -321,6 +309,13 @@ class Dypac(BaseDecomposition):
         # Create embedding
         self.embedding = Embedding(stab_maps.todense())
         return self
+
+    def _mask_grey_matter(self, imgs):
+        """Convert a grey matter segmentation into a brain mask."""
+        gm_img = image.resample_to_img(self.grey_matter, imgs[0])
+        return image.new_img_like(
+            imgs[0], gm_img.get_fdata() > self.threshold_grey_matter
+        )
 
     def _mask_and_reduce_batch(self, imgs, confounds=None):
         """Iterate dypac on batches of files."""
@@ -368,10 +363,6 @@ class Dypac(BaseDecomposition):
             # reference count on it, and possibly free the corresponding
             # data
             del img
-            # Scale grey matter voxels to give them more weight in the
-            # classification
-            if self.weights_grey_matter_ is not None:
-                this_data = np.multiply(this_data, self.weights_grey_matter_)
             onehot = bpp.replicate_clusters(
                 this_data.transpose(),
                 subsample_size=self.subsample_size,
