@@ -261,19 +261,6 @@ class Dypac(BaseDecomposition):
             at the object level.
         """
         imgs, confounds = _sanitize_imgs(imgs, confounds)
-
-        # Use grey_matter segmentation as mask, if specified
-        if self.grey_matter == "MNI":
-            if self.verbose:
-                print("[{0}] load specified grey matter mask".format(self.__class__.__name__))
-            mni = datasets.fetch_icbm152_2009()
-            self.grey_matter = mni.gm
-
-        if self.grey_matter is not None:
-            if self.verbose:
-                print("Use the grey matter segmentation as a brain mask")
-            self.mask = self._mask_grey_matter(imgs)
-
         self.masker_ = check_embedded_nifti_masker(self)
 
         # Avoid warning with imgs != None
@@ -282,6 +269,29 @@ class Dypac(BaseDecomposition):
             self.masker_.fit(imgs)
         else:
             self.masker_.fit()
+
+        # Use grey_matter segmentation as mask, if specified
+        if self.grey_matter == "MNI":
+            if self.verbose:
+                print(
+                    "[{0}] load specified grey matter mask".format(
+                        self.__class__.__name__
+                    )
+                )
+            mni = datasets.fetch_icbm152_2009()
+            self.grey_matter = mni.gm
+
+        if self.grey_matter is not None:
+            if self.verbose:
+                print(
+                    "[{0}] Restrict brain mask to grey matter".format(
+                        self.__class__.__name__
+                    )
+                )
+            self.mask = self._mask_grey_matter(self.masker_.mask_img_)
+            self.masker_ = check_embedded_nifti_masker(self)
+            self.masker_.fit()
+
         self.mask_img_ = self.masker_.mask_img_
 
         # Control random number generation
@@ -310,12 +320,12 @@ class Dypac(BaseDecomposition):
         self.embedding = Embedding(stab_maps.todense())
         return self
 
-    def _mask_grey_matter(self, imgs):
+    def _mask_grey_matter(self, mask):
         """Convert a grey matter segmentation into a brain mask."""
-        gm_img = image.resample_to_img(self.grey_matter, imgs[0])
-        return image.new_img_like(
-            imgs[0], gm_img.get_fdata() > self.threshold_grey_matter
-        )
+        gm_img = image.resample_to_img(self.grey_matter, mask)
+        mask_data = mask.get_fdata()
+        mask_data[gm_img.get_fdata() < self.threshold_grey_matter] = 0
+        return image.new_img_like(mask, mask_data)
 
     def _mask_and_reduce_batch(self, imgs, confounds=None):
         """Iterate dypac on batches of files."""
