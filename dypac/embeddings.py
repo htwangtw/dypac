@@ -2,14 +2,6 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 
 
-def projector(X):
-    """Ordinary least-square projection."""
-    # when solving Y = beta * X + E, for beta minimizing sum of E squares,
-    # beta takes the form of Y * P, with P the projection matrix into the space
-    # spanned by X. The following formula computes P.
-    return np.dot(X.transpose(), np.linalg.pinv(np.dot(X, X.transpose())))
-
-
 def miss_constant(X, precision=1e-10):
     """Check if a constant vector is missing in a vector basis.
     """
@@ -40,7 +32,7 @@ class Embedding:
 
         inverse_transform_mat: ndarray
             matrix projection from embedding to original space.
-            
+
         """
         self.size = X.shape[0]
         # Once we have the embedded representation beta, the inverse transform
@@ -52,9 +44,9 @@ class Embedding:
         else:
             self.inverse_transform_mat = X
         # The embedded representation beta is also derived by a simple linear
-        # mixture Y * P, where P is defined in `projector`
+        # mixture Y * P, where P is the pseudo-inverse of X
         # We store P as our transform matrix
-        self.transform_mat = projector(self.inverse_transform_mat)
+        self.transform_mat = np.linalg.pinv(self.inverse_transform_mat)
 
     def transform(self, data):
         """Project data in embedding space."""
