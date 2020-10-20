@@ -368,7 +368,8 @@ class Dypac(BaseDecomposition):
         """
         onehot_list = []
         for ind, img, confound in zip(range(len(imgs)), imgs, confounds):
-            this_data = self.masker_.transform(img, confound)
+            this_data = self.masker_.transform([img], [confound])[0]
+
             # Now get rid of the img as fast as possible, to free a
             # reference count on it, and possibly free the corresponding
             # data
@@ -424,8 +425,8 @@ class Dypac(BaseDecomposition):
             been applied.
         """
         self._check_components_()
-        tseries = self.masker_.transform(img, confound)
-        return self.masker_.inverse_transform(tseries)
+        tseries = self.masker_.transform([img], [confound])
+        return self.masker_.inverse_transform(tseries[0])
 
     def transform(self, img, confound=None):
         """
@@ -447,9 +448,9 @@ class Dypac(BaseDecomposition):
             and not one of the parcels.
         """
         self._check_components_()
-        tseries = self.masker_.transform(img, confound)
+        tseries = self.masker_.transform([img], [confound])
         del img
-        return self.embedding.transform(tseries)
+        return self.embedding.transform(tseries[0])
 
     def inverse_transform(self, weights):
         """
@@ -488,9 +489,9 @@ class Dypac(BaseDecomposition):
             The 4D fMRI dataset corresponding to the input, compressed in the parcel space.
         """
         self._check_components_()
-        tseries = self.masker_.transform(img, confound)
+        tseries = self.masker_.transform([img], [confound])
         del img
-        return self.masker_.inverse_transform(self.embedding.compress(tseries))
+        return self.masker_.inverse_transform(self.embedding.compress(tseries[0]))
 
     def score(self, img, confound=None):
         """
@@ -517,6 +518,6 @@ class Dypac(BaseDecomposition):
         performs worst than the average of the signal.
         """
         self._check_components_()
-        tseries = self.masker_.transform(img, confound)
+        tseries = self.masker_.transform([img], [confound])
         del img
-        return self.masker_.inverse_transform(self.embedding.score(tseries))
+        return self.masker_.inverse_transform(self.embedding.score(tseries[0]))
