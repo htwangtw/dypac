@@ -3,8 +3,7 @@ from sklearn.preprocessing import StandardScaler
 
 
 def miss_constant(X, precision=1e-10):
-    """Check if a constant vector is missing in a vector basis.
-    """
+    """Check if a constant vector is missing in a vector basis."""
     return np.min(np.sum(np.absolute(X - 1), axis=1)) > precision
 
 
