@@ -51,13 +51,13 @@ class Embedding:
         """Project data in embedding space."""
         # Given Y, we get
         # beta = Y * P
-        return np.matmul(data, self.transform_mat)
+        return np.asarray(np.matmul(data, self.transform_mat))
 
     def inverse_transform(self, embedded_data):
         """Project embedded data back to original space."""
         # Given beta, we get:
         # Y_hat = beta * X
-        return np.matmul(embedded_data, self.inverse_transform_mat)
+        return np.asarray(np.matmul(embedded_data, self.inverse_transform_mat))
 
     def compress(self, data):
         """Embedding compression of data in original space."""
