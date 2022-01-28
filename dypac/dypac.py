@@ -15,8 +15,8 @@ from nilearn import EXPAND_PATH_WILDCARDS
 from joblib import Memory
 from nilearn import datasets, image
 from nilearn._utils.niimg_conversions import _resolve_globbing
-from nilearn.input_data import NiftiMasker
-from nilearn.input_data.masker_validation import check_embedded_nifti_masker
+from nilearn.maskers import NiftiMasker
+from nilearn.maskers._masker_validation import _check_embedded_nifti_masker
 from nilearn.decomposition.base import BaseDecomposition
 
 import dypac.bascpp as bpp
@@ -261,7 +261,7 @@ class Dypac(BaseDecomposition):
             at the object level.
         """
         imgs, confounds = _sanitize_imgs(imgs, confounds)
-        self.masker_ = check_embedded_nifti_masker(self)
+        self.masker_ = _check_embedded_nifti_masker(self)
 
         # Avoid warning with imgs != None
         # if masker_ has been provided a mask_img
@@ -289,7 +289,7 @@ class Dypac(BaseDecomposition):
                     )
                 )
             self.mask = self._mask_grey_matter(self.masker_.mask_img_)
-            self.masker_ = check_embedded_nifti_masker(self)
+            self.masker_ = _check_embedded_nifti_masker(self)
             self.masker_.fit()
 
         self.mask_img_ = self.masker_.mask_img_
