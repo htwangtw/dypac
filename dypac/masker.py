@@ -1,8 +1,8 @@
 from dypac.embeddings import Embedding
 from sklearn.preprocessing import OneHotEncoder
 from nilearn.image import resample_to_img
-from nilearn.input_data import NiftiMasker
-
+from nilearn.maskers import NiftiMasker
+from nilearn.maskers._masker_validation import _check_embedded_nifti_masker
 
 class BaseMasker:
 
@@ -173,6 +173,12 @@ class LabelsMasker(BaseMasker):
             see the class Embedding from Dypac.
         """
 
+        self.masker_ = _check_embedded_nifti_masker(masker)
+        # Forwarding potential attribute of provided masker
+        if hasattr(masker, 'mask_img_'):
+            # Allow free fit of returned mask
+            self.masker_.mask_img_ = masker.mask_img_
+
         labels_r = resample_to_img(source_img=labels_img,
             target_img=masker.mask_img_, interpolation="nearest")
         nifti_masker = NiftiMasker(
@@ -184,7 +190,6 @@ class LabelsMasker(BaseMasker):
             memory_level=1,
         )
         labels_mask = nifti_masker.fit_transform(labels_r)
-        self.masker_ = masker
         self.components_ = OneHotEncoder().fit_transform(labels_mask.transpose())
         self.embedding_ = Embedding(self.components_.todense().transpose())
 
@@ -215,10 +220,16 @@ class MapsMasker(BaseMasker):
         embedding_:
             see the class Embedding from Dypac.
         """
+        self.masker_ = _check_embedded_nifti_masker(masker)
+        # Forwarding potential attribute of provided masker
+        if hasattr(masker, 'mask_img_'):
+            # Allow free fit of returned mask
+            self.masker_.mask_img_ = masker.mask_img_
+
         maps_r = resample_to_img(source_img=maps_img,
-            target_img=masker.mask_img_, interpolation="continuous")
+            target_img=self.masker_.mask_img_, interpolation="continuous")
         nifti_masker = NiftiMasker(
-            mask_img=masker.mask_img_,
+            mask_img=self.masker_.mask_img_,
             standardize=False,
             smoothing_fwhm=None,
             detrend=False,
@@ -226,6 +237,5 @@ class MapsMasker(BaseMasker):
             memory_level=1,
         )
         maps_mask = nifti_masker.fit_transform(maps_r)
-        self.masker_ = masker
         self.components_ = maps_mask.transpose()
         self.embedding_ = Embedding(self.components_.transpose())
