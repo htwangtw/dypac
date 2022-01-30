@@ -1,6 +1,6 @@
 jupyter>=1.0.0
 matplotlib>=3.1.1
-git+git://github.com/nilearn/nilearn.git@8e972c4d382a74fb126f768a0ae02e01e817515c
+nilearn>=0.9.0
 scikit-learn>=0.21.3
 black>=19.3b0
 tqdm>=4.41.1
