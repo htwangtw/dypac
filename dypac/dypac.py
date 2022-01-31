@@ -301,7 +301,7 @@ class Dypac(BaseDecomposition):
         if self.n_batch > len(imgs):
             warnings.warn(
                 "{0} batches were requested, but only {1} datasets available. Using {2} batches instead.".format(
-                    self.n_batch, len(imgs), self.n_batch
+                    self.n_batch, len(imgs), len(imgs)
                 )
             )
             self.n_batch = len(imgs)
