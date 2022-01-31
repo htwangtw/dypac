@@ -9,7 +9,7 @@ with open(path.join(here, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="dypac",
-    version="0.5.3",
+    version="0.6",
     description="Dynamic parcel aggregation with clustering",
     long_description=long_description,
     long_description_content_type="text/markdown",  # Optional (see note above)
@@ -37,6 +37,7 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
     ],
     python_requires=">=3.5",
 )
