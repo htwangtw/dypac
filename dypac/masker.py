@@ -149,7 +149,7 @@ class BaseMasker:
 
 class LabelsMasker(BaseMasker):
 
-    def __init__(self, masker, labels_img):
+    def __init__(self, masker, labels_img, method='ols'):
         """
         Build a Dypac-like masker from labels.
 
@@ -161,8 +161,16 @@ class LabelsMasker(BaseMasker):
             This masker is used to extract the time series prior to dimension
             reduction. The brain mask from the masker is re-used as well.
 
-        labels:
+        labels_img:
             a brain volumes with parcels (labels).
+
+        method: string, default 'ols'
+            The type of embedding.
+            'ols' ordinary least-squares - based on numpy pinv
+            'lasso' lasso regression (l1 regularization)
+                based on sklearn.linear_model.Lasso
+            'ridge' Ridge regression (l2 regularization)
+                based on sklearn.linear_model.Ridge
 
         Attributes
         ----------
@@ -191,12 +199,12 @@ class LabelsMasker(BaseMasker):
         )
         labels_mask = nifti_masker.fit_transform(labels_r)
         self.components_ = OneHotEncoder().fit_transform(labels_mask.transpose())
-        self.embedding_ = Embedding(self.components_.todense().transpose())
+        self.embedding_ = Embedding(self.components_.todense().transpose(), method=method)
 
 
 class MapsMasker(BaseMasker):
 
-    def __init__(self, masker, maps_img):
+    def __init__(self, masker, maps_img, method='ols'):
         """
         Build a Dypac-like masker from a collection of brain maps.
 
@@ -211,6 +219,14 @@ class MapsMasker(BaseMasker):
             See http://nilearn.github.io/manipulating_images/input_output.html
             Set of continuous maps. One representative time course per map is
             extracted using least square regression.
+
+        method: string, default 'ols'
+            The type of embedding.
+            'ols' ordinary least-squares - based on numpy pinv
+            'lasso' lasso regression (l1 regularization)
+                based on sklearn.linear_model.Lasso
+            'ridge' Ridge regression (l2 regularization)
+                based on sklearn.linear_model.Ridge
 
         Attributes
         ----------
@@ -238,4 +254,4 @@ class MapsMasker(BaseMasker):
         )
         maps_mask = nifti_masker.fit_transform(maps_r)
         self.components_ = maps_mask.transpose()
-        self.embedding_ = Embedding(self.components_.transpose())
+        self.embedding_ = Embedding(self.components_.transpose(), method=method)
